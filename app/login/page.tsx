@@ -146,13 +146,13 @@ export default function LoginPage() {
             <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white p-1.5 shadow-lg shadow-black/10">
               <Image
                 src="/logo.png"
-                alt="NECO"
+                alt="NECAS"
                 width={48}
                 height={48}
                 className="h-full w-full object-contain"
               />
             </span>
-            <span className="text-3xl font-extrabold tracking-widest">NECO</span>
+            <span className="text-3xl font-extrabold tracking-widest">NECAS</span>
           </span>
           <span className="text-sm text-white/90">
             Belanja dari toko tetanggamu

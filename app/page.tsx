@@ -559,7 +559,7 @@ export default function HalamanPublik() {
 
       {/* FOOTER (desktop) */}
       <footer className="mt-8 hidden border-t border-gray-100 bg-white py-6 text-center text-xs text-gray-500 md:block">
-        © 2026 NECO. Belanja dari toko sekitarmu.
+        © 2026 NECAS. Belanja dari toko sekitarmu.
       </footer>
 
       {/* BOTTOM NAV */}

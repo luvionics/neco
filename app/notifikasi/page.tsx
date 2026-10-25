@@ -37,7 +37,7 @@ const DATA_AWAL: Notif[] = [
   { id: 5, jenis: "info", judul: "Toko baru di sekitarmu", isi: "Glow Beauty sudah buka di Perumahan Griya Asri, sekitar 1,9 km dari tempatmu.", waktu: "08.30", kelompok: "Kemarin", dibaca: true, href: "/toko/7" },
   { id: 6, jenis: "pesanan", judul: "Pesanan selesai", isi: "Bagaimana belanjamu di Berkah Fashion? Beri ulasan agar tetangga lain ikut terbantu.", waktu: "18 Okt", kelompok: "Sebelumnya", dibaca: true, href: "/pesanan/NEC-181026-004/ulasan" },
   { id: 7, jenis: "pesanan", judul: "Pesanan dibatalkan", isi: "Pesanan NEC-051026-001 dari Gadget Corner dibatalkan.", waktu: "5 Okt", kelompok: "Sebelumnya", dibaca: true, href: "/pesanan" },
-  { id: 8, jenis: "info", judul: "Selamat datang di NECO", isi: "Temukan toko terdekat, lihat jam buka, lalu pilih diantar atau ambil sendiri.", waktu: "1 Okt", kelompok: "Sebelumnya", dibaca: true, href: "/" },
+  { id: 8, jenis: "info", judul: "Selamat datang di NECAS", isi: "Temukan toko terdekat, lihat jam buka, lalu pilih diantar atau ambil sendiri.", waktu: "1 Okt", kelompok: "Sebelumnya", dibaca: true, href: "/" },
 ];
 
 const KELOMPOK: Kelompok[] = ["Hari ini", "Kemarin", "Sebelumnya"];

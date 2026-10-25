@@ -561,7 +561,7 @@ export default function AkunPage() {
               </div>
             </Kartu>
 
-            <p className="pt-2 text-center text-xs text-gray-400">NECO · Versi 1.0</p>
+            <p className="pt-2 text-center text-xs text-gray-400">NECAS · Versi 1.0</p>
           </>
         )}
       </main>

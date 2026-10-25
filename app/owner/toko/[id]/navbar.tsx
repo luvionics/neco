@@ -114,7 +114,7 @@ export default function Navbar() {
             <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-50 to-amber-50 p-2 ring-1 ring-orange-100">
               <Image
                 src="/logo.png"
-                alt="NECO"
+                alt="NECAS"
                 width={40}
                 height={40}
                 className="h-full w-full object-contain"
@@ -201,7 +201,7 @@ export default function Navbar() {
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-orange-50 to-amber-50 p-1.5 ring-1 ring-orange-100">
             <Image
               src="/logo.png"
-              alt="NECO"
+              alt="NECAS"
               width={40}
               height={40}
               className="h-full w-full object-contain"
