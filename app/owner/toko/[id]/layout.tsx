@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { Suspense } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { AlertCircle, Clock } from "lucide-react";
@@ -50,12 +51,20 @@ function Cangkang({ children }: { children: ReactNode }) {
   );
 }
 
-export default function TokoLayout({ children }: { children: ReactNode }) {
+function TokoLayoutContent({ children }: { children: ReactNode }) {
   const params = useParams<{ id: string }>();
 
   return (
     <TokoProvider key={params?.id}>
       <Cangkang>{children}</Cangkang>
     </TokoProvider>
+  );
+}
+
+export default function TokoLayout({ children }: { children: ReactNode }) {
+  return (
+    <Suspense fallback={null}>
+      <TokoLayoutContent>{children}</TokoLayoutContent>
+    </Suspense>
   );
 }
