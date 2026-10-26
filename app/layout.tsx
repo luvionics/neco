@@ -13,11 +13,11 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "NECAS - Next E-Commerce & Cashier Application System",
+  title: "NECOKU - Next Everyday Commerce & Order Key Unit",
   description:
     "Platform kasir omnichannel & e-commerce terpadu. Mendukung pesan antar, ambil sendiri, pesan dari meja, dan toko online publik.",
   keywords: [
-    "NECAS",
+    "NECOKU",
     "Kasir Online",
     "POS System",
     "E-Commerce",

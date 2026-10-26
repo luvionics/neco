@@ -43,14 +43,14 @@ export default function Header({
               <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white p-1 shadow-sm md:h-10 md:w-10">
                 <Image
                   src="/logo.png"
-                  alt="NECAS"
+                  alt="Necoku"
                   width={40}
                   height={40}
                   className="h-full w-full object-contain"
                 />
               </span>
               <span className="hidden text-2xl font-extrabold tracking-widest md:inline">
-                NECAS
+                Necoku
               </span>
             </a>
 

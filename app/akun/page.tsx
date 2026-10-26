@@ -373,24 +373,27 @@ export default function AkunPage() {
             )}
 
             {/* PROFIL */}
-            <section className="overflow-hidden rounded-3xl border border-gray-100 bg-white shadow-sm">
-              <div className="relative h-20 bg-gradient-to-r from-orange-500 via-orange-500 to-amber-500">
+            {/* ← DIPERBAIKI: overflow-hidden dipindah ke banner saja, kartu tidak lagi memotong avatar */}
+            <section className="rounded-3xl border border-gray-100 bg-white shadow-sm">
+              {/* Banner: overflow-hidden + rounded atas agar lingkaran dekoratif tetap terpotong rapi */}
+              <div className="relative h-20 overflow-hidden rounded-t-3xl bg-gradient-to-r from-orange-500 via-orange-500 to-amber-500">
                 <div className="pointer-events-none absolute -right-8 -top-10 h-36 w-36 rounded-full bg-white/10" />
                 <div className="pointer-events-none absolute -bottom-12 left-1/3 h-32 w-32 rounded-full bg-white/10" />
               </div>
-              <div className="px-5 pb-5">
+              {/* ← DIPERBAIKI: relative z-10 supaya avatar berada di atas banner */}
+              <div className="relative z-10 px-5 pb-5">
                 <div className="-mt-10 flex items-end justify-between gap-3">
                   {profil.avatar ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={profil.avatar}
                       alt=""
-                      className="h-20 w-20 shrink-0 rounded-full object-cover shadow-lg shadow-orange-500/30 ring-4 ring-white"
+                      className="relative h-20 w-20 shrink-0 rounded-full object-cover shadow-lg shadow-orange-500/30 ring-4 ring-white"
                     />
                   ) : (
                     <span
                       aria-hidden="true"
-                      className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-orange-400 to-red-500 text-3xl font-extrabold text-white shadow-lg shadow-orange-500/30 ring-4 ring-white"
+                      className="relative flex h-20 w-20 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-orange-400 to-red-500 text-3xl font-extrabold text-white shadow-lg shadow-orange-500/30 ring-4 ring-white"
                     >
                       {inisial}
                     </span>
@@ -561,7 +564,7 @@ export default function AkunPage() {
               </div>
             </Kartu>
 
-            <p className="pt-2 text-center text-xs text-gray-400">NECAS · Versi 1.0</p>
+            <p className="pt-2 text-center text-xs text-gray-400">Necoku · Versi 1.0</p>
           </>
         )}
       </main>

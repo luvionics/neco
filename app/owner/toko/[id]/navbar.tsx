@@ -11,7 +11,7 @@ import {
   LayoutDashboard,
   Package,
   Receipt,
-  Store,
+  Settings,
 } from "lucide-react";
 import { STATUS_TOKO, urlHalamanToko, useToko } from "./toko-context";
 import { Saklar } from "./ui";
@@ -23,7 +23,7 @@ export default function Navbar() {
   const aktif = toko.status === "aktif";
   const infoStatus = STATUS_TOKO[toko.status];
 
-  // Menu Pesanan hanya ada jika minimal satu jenis pesanan diaktifkan
+  // Menu Pesanan hanya ada jika minimal satu layanan pembeli diaktifkan
   const adaPesanan = toko.antar || toko.ambil || toko.meja;
 
   const MENU = [
@@ -32,10 +32,11 @@ export default function Navbar() {
       ? [{ href: `${base}/pesanan`, label: "Pesanan", ikon: Receipt, cocok: pathname.startsWith(`${base}/pesanan`), jumlah: totalBaru }]
       : []),
     { href: `${base}/produk`, label: "Produk", ikon: Package, cocok: pathname.startsWith(`${base}/produk`), jumlah: 0 },
+    // Menu Kasir hanya ada jika fitur kasir diaktifkan
     ...(toko.kasir
       ? [{ href: `${base}/kasir`, label: "Kasir", ikon: Calculator, cocok: pathname.startsWith(`${base}/kasir`), jumlah: 0 }]
       : []),
-    { href: `${base}/info`, label: "Info toko", ikon: Store, cocok: pathname.startsWith(`${base}/info`), jumlah: 0 },
+       { href: `${base}/pengaturan`, label: "Pengaturan toko", ikon: Settings, cocok: pathname.startsWith(`${base}/pengaturan`), jumlah: 0 },
   ];
 
   const titik = (
@@ -114,7 +115,7 @@ export default function Navbar() {
             <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-50 to-amber-50 p-2 ring-1 ring-orange-100">
               <Image
                 src="/logo.png"
-                alt="NECAS"
+                alt="Necoku"
                 width={40}
                 height={40}
                 className="h-full w-full object-contain"
@@ -201,7 +202,7 @@ export default function Navbar() {
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-orange-50 to-amber-50 p-1.5 ring-1 ring-orange-100">
             <Image
               src="/logo.png"
-              alt="NECAS"
+              alt="Necoku"
               width={40}
               height={40}
               className="h-full w-full object-contain"

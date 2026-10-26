@@ -6,13 +6,11 @@ import {
   AlertCircle,
   ArrowLeft,
   BadgeCheck,
-  Bell,
   Bike,
   Calculator,
   ChevronRight,
   Clock,
   ExternalLink,
-  Home,
   Info,
   Loader2,
   MapPin,
@@ -22,7 +20,6 @@ import {
   Settings,
   Star,
   Store,
-  User,
   UtensilsCrossed,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -314,25 +311,10 @@ export default function TokoSayaPage() {
       ].filter(Boolean) as { ikon: React.ComponentType<{ className?: string }>; label: string }[]
     : [];
 
-  // Menu navigasi. Pesanan butuh id toko, jadi nonaktif bila belum punya toko.
-  const NAV = [
-    { id: "beranda", nama: "Beranda", ikon: Home, href: "/owner", aktif: true, badge: 0 },
-    {
-      id: "pesanan",
-      nama: "Pesanan",
-      ikon: Receipt,
-      href: toko ? `/owner/toko/${toko.id}/pesanan` : "/owner",
-      aktif: false,
-      badge: stat.pesananBaru,
-    },
-    { id: "notifikasi", nama: "Notifikasi", ikon: Bell, href: "/notifikasi", aktif: false, badge: 0 },
-    { id: "akun", nama: "Akun", ikon: User, href: "/akun", aktif: false, badge: 0 },
-  ];
-
   return (
-    <div className="min-h-screen bg-gray-50 pb-24 text-gray-800 md:pb-0">
+    <div className="min-h-screen bg-gray-50 text-gray-800">
       {/* HEADER */}
-      <header className="sticky top-0 z-30 border-b border-gray-100 bg-white/80 backdrop-blur-xl">
+      <header className="sticky top-0 z-30 border-b border-gray-100 bg-white">
         <div className="mx-auto flex max-w-5xl items-center gap-3 px-3 py-2.5 md:px-4">
           <a
             href="/"
@@ -344,7 +326,7 @@ export default function TokoSayaPage() {
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-orange-50 to-amber-50 p-1.5 ring-1 ring-orange-100">
             <Image
               src="/logo.png"
-              alt="NECAS"
+              alt="Necoku"
               width={40}
               height={40}
               className="h-full w-full object-contain"
@@ -357,34 +339,10 @@ export default function TokoSayaPage() {
             </p>
           </div>
 
-          {/* MENU (desktop) */}
-          <nav aria-label="Navigasi utama" className="hidden items-center gap-1 md:flex">
-            {NAV.map(({ id, nama, ikon: Ikon, href, aktif: sel, badge }) => (
-              <a
-                key={id}
-                href={href}
-                aria-current={sel ? "page" : undefined}
-                className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition-colors ${
-                  sel
-                    ? "bg-orange-50 text-orange-600"
-                    : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-                }`}
-              >
-                <Ikon className="h-4 w-4" />
-                {nama}
-                {badge > 0 && (
-                  <span className="rounded-full bg-orange-500 px-1.5 text-[10px] font-bold leading-4 text-white">
-                    {badge > 9 ? "9+" : badge}
-                  </span>
-                )}
-              </a>
-            ))}
-          </nav>
-
           {!memuat && !punyaToko && !galatMuat && (
             <a
               href="/owner/daftar"
-              className={`hidden items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-semibold md:ml-2 md:flex ${TOMBOL_UTAMA}`}
+              className={`hidden items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-semibold md:flex ${TOMBOL_UTAMA}`}
             >
               <Plus className="h-4 w-4" />
               Daftarkan toko
@@ -479,7 +437,7 @@ export default function TokoSayaPage() {
                 </p>
 
                 <div className="mt-5 grid grid-cols-3 gap-3">
-                  <div className="rounded-2xl bg-white/15 p-3.5 ring-1 ring-white/20 backdrop-blur-sm">
+                  <div className="rounded-2xl bg-white/15 p-3.5 ring-1 ring-white/20">
                     <div className="flex items-center gap-1.5 text-xs text-orange-50">
                       <Receipt className="h-4 w-4" />
                       Pesanan baru
@@ -488,14 +446,14 @@ export default function TokoSayaPage() {
                       {stat.pesananBaru}
                     </p>
                   </div>
-                  <div className="rounded-2xl bg-white/15 p-3.5 ring-1 ring-white/20 backdrop-blur-sm">
+                  <div className="rounded-2xl bg-white/15 p-3.5 ring-1 ring-white/20">
                     <div className="flex items-center gap-1.5 text-xs text-orange-50">
                       <Package className="h-4 w-4" />
                       Produk
                     </div>
                     <p className="mt-1.5 text-2xl font-bold leading-none">{stat.produk}</p>
                   </div>
-                  <div className="rounded-2xl bg-white/15 p-3.5 ring-1 ring-white/20 backdrop-blur-sm">
+                  <div className="rounded-2xl bg-white/15 p-3.5 ring-1 ring-white/20">
                     <div className="flex items-center gap-1.5 text-xs text-orange-50">
                       <Star className="h-4 w-4" />
                       Rating
@@ -736,36 +694,6 @@ export default function TokoSayaPage() {
           </>
         )}
       </main>
-
-      {/* NAVIGASI BAWAH (mobile) */}
-      <nav
-        aria-label="Navigasi utama"
-        className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-100 bg-white/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl md:hidden"
-      >
-        <ul className="mx-auto grid max-w-md grid-cols-4">
-          {NAV.map(({ id, nama, ikon: Ikon, href, aktif: sel, badge }) => (
-            <li key={id}>
-              <a
-                href={href}
-                aria-current={sel ? "page" : undefined}
-                className={`relative flex flex-col items-center gap-0.5 py-2.5 text-[11px] font-medium transition-colors ${
-                  sel ? "text-orange-600" : "text-gray-500 hover:text-gray-800"
-                }`}
-              >
-                <span className="relative">
-                  <Ikon className="h-5 w-5" />
-                  {badge > 0 && (
-                    <span className="absolute -right-2 -top-1.5 min-w-4 rounded-full bg-orange-500 px-1 text-center text-[9px] font-bold leading-4 text-white ring-2 ring-white">
-                      {badge > 9 ? "9+" : badge}
-                    </span>
-                  )}
-                </span>
-                {nama}
-              </a>
-            </li>
-          ))}
-        </ul>
-      </nav>
     </div>
   );
 }

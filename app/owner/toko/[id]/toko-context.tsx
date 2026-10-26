@@ -4,6 +4,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
@@ -11,6 +12,7 @@ import {
 import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
 import { Store } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
 
 // ---------- Tipe ----------
 
@@ -69,52 +71,63 @@ export type Produk = {
   tersedia: boolean;
 };
 
-// ---------- Data contoh, nanti ganti dengan data dari database ----------
-
-const TOKO: Record<number, DetailToko> = {
-  1: { nama: "Warung Bu Siti", kategori: "Warung & Sembako", area: "Dusun Krajan", alamat: "Jl. Mawar No. 12, RT 02/RW 01", buka: "06:00", tutup: "21:00", status: "aktif", bukaSekarang: true, terverifikasi: true, warna: "from-amber-400 to-orange-500", antar: true, ambil: true, meja: false, cod: true, kasir: true },
-  2: { nama: "Dapur Mak Nyah", kategori: "Makanan", area: "Dusun Krajan", alamat: "Jl. Melati No. 5, RT 01/RW 01", buka: "07:00", tutup: "20:00", status: "aktif", bukaSekarang: false, terverifikasi: true, warna: "from-red-400 to-rose-500", antar: true, ambil: true, meja: true, cod: true, kasir: true },
-  3: { nama: "Glow Beauty Griya Asri", kategori: "Kecantikan", area: "Perumahan Griya Asri", alamat: "Blok C No. 7, Griya Asri", buka: "09:00", tutup: "18:00", status: "menunggu", bukaSekarang: false, terverifikasi: false, warna: "from-pink-400 to-rose-500", antar: true, ambil: false, meja: false, cod: true, kasir: false },
-  4: { nama: "Santri Mart 2", kategori: "Warung & Sembako", area: "Dusun Baru", alamat: "Dusun Baru", buka: "05:30", tutup: "22:00", status: "ditolak", bukaSekarang: false, terverifikasi: false, warna: "from-sky-400 to-cyan-600", antar: true, ambil: true, meja: false, cod: true, kasir: false, alasanTolak: "Alamat belum jelas. Tambahkan nama jalan dan patokan." },
-  5: { nama: "Rumah Asri Lama", kategori: "Rumah Tangga", area: "Pasar Lama", alamat: "Jl. Pasar Lama No. 20", buka: "08:00", tutup: "17:00", status: "nonaktif", bukaSekarang: false, terverifikasi: false, warna: "from-emerald-400 to-teal-600", antar: true, ambil: true, meja: false, cod: true, kasir: false },
-};
-
-const PESANAN_AWAL: Record<number, PesananMasuk[]> = {
-  1: [
-    { id: "NEC-221026-006", pembeli: "Rina Wulandari", wa: "6281234567811", waktu: "Hari ini, 11.30", jenis: "ambil", bayar: "cod", item: [{ nama: "Teh celup", qty: 2, harga: 8500 }], ongkir: 0, status: "menunggu" },
-    { id: "NEC-221026-005", pembeli: "Agus Pratama", wa: "6281234567812", waktu: "Hari ini, 11.05", jenis: "antar", bayar: "cod", item: [{ nama: "Gas LPG 3 kg", qty: 1, harga: 22000 }, { nama: "Air mineral galon", qty: 1, harga: 20000 }], ongkir: 2000, status: "menunggu" },
-    { id: "NEC-221026-004", pembeli: "Siti Rahma", wa: "6281234567813", waktu: "Hari ini, 10.40", jenis: "ambil", bayar: "transfer", item: [{ nama: "Telur 1 kg", qty: 1, harga: 29000 }, { nama: "Mie instan goreng", qty: 10, harga: 3200 }], ongkir: 0, status: "menunggu" },
-    { id: "NEC-221026-002", pembeli: "Budi Santoso", wa: "6281234567890", waktu: "Hari ini, 09.15", jenis: "antar", bayar: "cod", item: [{ nama: "Beras 5 kg", qty: 1, harga: 68000 }, { nama: "Minyak goreng 1 L", qty: 2, harga: 17000 }, { nama: "Gula pasir 1 kg", qty: 1, harga: 16000 }], ongkir: 2000, status: "dikirim" },
-    { id: "NEC-211026-011", pembeli: "Dewi Lestari", wa: "6281234567814", waktu: "Kemarin, 16.20", jenis: "ambil", bayar: "cod", item: [{ nama: "Gula pasir 1 kg", qty: 2, harga: 16000 }], ongkir: 0, status: "selesai" },
-  ],
-  2: [
-    { id: "NEC-221026-009", pembeli: "Fajar Nugroho", waktu: "Hari ini, 11.40", jenis: "meja", meja: "4", bayar: "kasir", item: [{ nama: "Nasi ayam geprek", qty: 2, harga: 18000 }, { nama: "Es teh manis", qty: 2, harga: 4000 }], ongkir: 0, status: "menunggu" },
-    { id: "NEC-221026-008", pembeli: "Laila Hanum", wa: "6281234567816", waktu: "Hari ini, 11.10", jenis: "meja", meja: "7", bayar: "kasir", item: [{ nama: "Es teh manis", qty: 3, harga: 4000 }], ongkir: 0, status: "diproses" },
-    { id: "NEC-221026-007", pembeli: "Yusuf Maulana", waktu: "Hari ini, 10.20", jenis: "meja", meja: "2", bayar: "kasir", item: [{ nama: "Nasi ayam geprek", qty: 1, harga: 18000 }], ongkir: 0, status: "selesai" },
-    { id: "NEC-211026-008", pembeli: "Hendra Wijaya", wa: "6281234567815", waktu: "Kemarin, 12.10", jenis: "antar", bayar: "cod", item: [{ nama: "Nasi ayam geprek", qty: 2, harga: 18000 }], ongkir: 3000, status: "selesai" },
-  ],
-};
-
-const PRODUK_AWAL: Record<number, Produk[]> = {
-  1: [
-    { id: 1, nama: "Beras 5 kg", harga: 68000, stok: 24, tersedia: true },
-    { id: 2, nama: "Minyak goreng 1 L", harga: 17000, stok: 40, tersedia: true },
-    { id: 3, nama: "Gula pasir 1 kg", harga: 16000, stok: 0, tersedia: false },
-    { id: 4, nama: "Telur 1 kg", harga: 29000, stok: 12, tersedia: true },
-    { id: 5, nama: "Mie instan goreng", harga: 3200, stok: 150, tersedia: true },
-    { id: 6, nama: "Gas LPG 3 kg", harga: 22000, stok: 8, tersedia: true },
-  ],
-  2: [
-    { id: 1, nama: "Nasi ayam geprek", harga: 18000, stok: 20, tersedia: true },
-    { id: 2, nama: "Es teh manis", harga: 4000, stok: 50, tersedia: true },
-    { id: 3, nama: "Soto ayam", harga: 15000, stok: 0, tersedia: false },
-  ],
-};
-
 // ---------- Konstanta & fungsi bantu ----------
 
 /** Alamat halaman toko yang dilihat pembeli. Sesuaikan dengan rute aslinya. */
-export const urlHalamanToko = (id: number) => `/toko/${id}`;
+export const urlHalamanToko = (id: string) => `/toko/${id}`;
+
+type JamBuka = { open: string; close: string } | null;
+
+function statusDariDb(status: unknown): StatusToko {
+  switch (status) {
+    case "active":
+      return "aktif";
+    case "pending":
+      return "menunggu";
+    case "rejected":
+      return "ditolak";
+    case "suspended":
+    case "closed":
+      return "nonaktif";
+    default:
+      throw new Error(`Status toko tidak dikenali: ${String(status)}`);
+  }
+}
+
+function detailTokoDariDb(row: Record<string, unknown>): DetailToko {
+  const jam =
+    row.opening_hours && typeof row.opening_hours === "object"
+      ? (row.opening_hours as Record<string, JamBuka>)
+      : {};
+  const hariIni = new Date()
+    .toLocaleDateString("en-US", {
+      weekday: "short",
+      timeZone: "Asia/Jakarta",
+    })
+    .toLowerCase()
+    .slice(0, 3);
+  const jamHariIni = jam[hariIni];
+  const teks = (value: unknown) =>
+    typeof value === "string" ? value : "";
+
+  return {
+    nama: teks(row.name),
+    kategori: "Toko",
+    area: teks(row.village),
+    alamat: teks(row.address_line),
+    buka: jamHariIni?.open ?? "",
+    tutup: jamHariIni?.close ?? "",
+    status: statusDariDb(row.status),
+    bukaSekarang: row.is_open === true,
+    terverifikasi: row.is_verified === true,
+    warna: "from-amber-400 to-orange-500",
+    antar: row.delivery_enabled === true,
+    ambil: row.pickup_enabled === true,
+    meja: row.dine_in_enabled === true,
+    cod: false,
+    kasir: row.pos_enabled === true,
+  };
+}
 
 export const STATUS_TOKO: Record<StatusToko, { label: string; kelas: string }> = {
   aktif: { label: "Aktif", kelas: "bg-white/25 text-white" },
@@ -162,8 +175,8 @@ export const totalPesanan = (p: PesananMasuk) => subtotal(p) + p.ongkir;
 // ---------- Context ----------
 
 type NilaiToko = {
-  id: number;
-  /** Awalan URL dashboard toko ini, mis. /owner/toko/1 */
+  id: string;
+  /** Awalan URL dashboard toko ini, mis. /owner/toko/<uuid> */
   base: string;
   toko: DetailToko;
   pesanan: PesananMasuk[];
@@ -208,11 +221,83 @@ function TokoTidakDitemukan() {
 export function TokoProvider({ children }: { children: ReactNode }) {
   const params = useParams<{ id: string }>();
   const pathname = usePathname();
-  const id = Number(params?.id);
+  const id = params.id;
+  const supabase = useMemo(() => createClient(), []);
+  const [statusMuat, setStatusMuat] = useState<
+    "loading" | "unauthenticated" | "error" | "not-found" | "ready"
+  >("loading");
+  const [galatMuat, setGalatMuat] = useState("");
+  const [cobaLagi, setCobaLagi] = useState(0);
+  const [toko, setToko] = useState<DetailToko | null>(null);
+  const [pesanan, setPesanan] = useState<PesananMasuk[]>([]);
+  const [produk, setProduk] = useState<Produk[]>([]);
 
-  const [toko, setToko] = useState<DetailToko | undefined>(TOKO[id]);
-  const [pesanan, setPesanan] = useState<PesananMasuk[]>(PESANAN_AWAL[id] ?? []);
-  const [produk, setProduk] = useState<Produk[]>(PRODUK_AWAL[id] ?? []);
+  useEffect(() => {
+    let batal = false;
+
+    async function muatToko() {
+      setStatusMuat("loading");
+      setGalatMuat("");
+      setToko(null);
+
+      if (
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          id
+        )
+      ) {
+        setGalatMuat("Format ID toko tidak valid.");
+        setStatusMuat("error");
+        return;
+      }
+
+      try {
+        const {
+          data: { user },
+          error: errorAuth,
+        } = await supabase.auth.getUser();
+
+        if (batal) return;
+        if (errorAuth) throw errorAuth;
+        if (!user) {
+          setStatusMuat("unauthenticated");
+          window.location.replace("/login");
+          return;
+        }
+
+        const { data, error } = await supabase
+          .from("shops")
+          .select(
+            "id, name, village, address_line, status, is_open, is_verified, opening_hours, delivery_enabled, pickup_enabled, dine_in_enabled, pos_enabled"
+          )
+          .eq("id", id)
+          .eq("owner_id", user.id)
+          .maybeSingle();
+
+        if (batal) return;
+        if (error) throw error;
+        if (!data) {
+          setStatusMuat("not-found");
+          return;
+        }
+
+        setToko(detailTokoDariDb(data));
+        setStatusMuat("ready");
+      } catch (error) {
+        if (batal) return;
+        setGalatMuat(
+          error instanceof Error
+            ? error.message
+            : "Terjadi kesalahan yang tidak diketahui."
+        );
+        setStatusMuat("error");
+      }
+    }
+
+    void muatToko();
+    return () => {
+      batal = true;
+    };
+  }, [id, cobaLagi, supabase]);
 
   const perbaruiToko = useCallback((patch: Partial<DetailToko>) => {
     // TODO: simpan ke database
@@ -247,9 +332,51 @@ export function TokoProvider({ children }: { children: ReactNode }) {
     return { antar: hitung("antar"), ambil: hitung("ambil"), meja: hitung("meja") };
   }, [pesanan]);
 
-  if (!toko) return <TokoTidakDitemukan />;
+  if (statusMuat === "loading") {
+    return (
+      <div
+        className="flex min-h-screen items-center justify-center bg-gray-50 text-sm text-gray-500"
+        role="status"
+      >
+        Memuat data toko...
+      </div>
+    );
+  }
 
-  const base = pathname.match(/^(.*?\/toko\/[^/]+)/)?.[1] ?? `/toko/${id}`;
+  if (statusMuat === "unauthenticated") {
+    return (
+      <div
+        className="flex min-h-screen items-center justify-center bg-gray-50 text-sm text-gray-500"
+        role="status"
+      >
+        Sesi tidak ditemukan. Mengalihkan ke halaman login...
+      </div>
+    );
+  }
+
+  if (statusMuat === "error") {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-gray-50 px-6 text-center">
+        <p className="font-semibold text-gray-900">Gagal memuat data toko</p>
+        <p className="text-sm text-gray-600" role="alert">
+          {galatMuat}
+        </p>
+        <button
+          type="button"
+          onClick={() => setCobaLagi((jumlah) => jumlah + 1)}
+          className="rounded-lg bg-orange-500 px-5 py-2.5 text-sm font-semibold text-white hover:bg-orange-600"
+        >
+          Coba lagi
+        </button>
+      </div>
+    );
+  }
+
+  if (statusMuat === "not-found") return <TokoTidakDitemukan />;
+  if (!toko) throw new Error("Data toko tidak tersedia setelah pemuatan berhasil");
+
+  const base =
+    pathname.match(/^(.*?\/toko\/[^/]+)/)?.[1] ?? `/owner/toko/${id}`;
 
   return (
     <TokoContext.Provider

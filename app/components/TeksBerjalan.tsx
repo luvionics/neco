@@ -33,7 +33,7 @@ export default function TeksBerjalan({
 
       <div className="min-w-0 flex-1 overflow-hidden [mask-image:linear-gradient(to_right,transparent,black_6%,black_94%,transparent)]">
         <div
-          className="necas-marquee flex w-max"
+          className="necoku-marquee flex w-max"
           style={{ animationDuration: `${detik}s` }}
         >
           {/* Daftar diduplikasi agar putarannya mulus tanpa jeda */}
@@ -55,18 +55,18 @@ export default function TeksBerjalan({
       </div>
 
       <style>{`
-        @keyframes necas-marquee {
+        @keyframes necoku-marquee {
           from { transform: translateX(0); }
           to { transform: translateX(-50%); }
         }
-        .necas-marquee {
-          animation: necas-marquee linear infinite;
+        .necoku-marquee {
+          animation: necoku-marquee linear infinite;
         }
-        .necas-marquee:hover {
+        .necoku-marquee:hover {
           animation-play-state: paused;
         }
         @media (prefers-reduced-motion: reduce) {
-          .necas-marquee { animation: none; }
+          .necoku-marquee { animation: none; }
         }
       `}</style>
     </div>
