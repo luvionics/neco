@@ -64,19 +64,37 @@ export type PesananMasuk = {
 };
 
 export type Produk = {
-  id: number;
+  id: string; // uuid dari tabel products
   nama: string;
+  deskripsi: string; // description
+  sku: string; // kosong = tidak punya SKU
+  kategoriId: string | null; // category_id
   harga: number;
   stok: number;
-  tersedia: boolean;
+  tersedia: boolean; // is_available
+  nonStok: boolean; // is_non_stock
+  gambarUrl: string | null; // image_url
 };
+
+/** Data yang dikirim form saat menambah produk. */
+export type InputProduk = Omit<Produk, "id" | "gambarUrl"> & {
+  gambar: File | null;
+};
+
+export type Kategori = { id: string; nama: string };
 
 // ---------- Konstanta & fungsi bantu ----------
 
 /** Alamat halaman toko yang dilihat pembeli. Sesuaikan dengan rute aslinya. */
 export const urlHalamanToko = (id: string) => `/toko/${id}`;
 
+/** Nama bucket Supabase Storage untuk foto produk (harus public). */
+const BUCKET_PRODUK = "product-images";
+
 type JamBuka = { open: string; close: string } | null;
+
+const KOLOM_PRODUK =
+  "id, name, description, sku, category_id, price, stock, is_available, is_non_stock, image_url";
 
 function statusDariDb(status: unknown): StatusToko {
   switch (status) {
@@ -107,8 +125,7 @@ function detailTokoDariDb(row: Record<string, unknown>): DetailToko {
     .toLowerCase()
     .slice(0, 3);
   const jamHariIni = jam[hariIni];
-  const teks = (value: unknown) =>
-    typeof value === "string" ? value : "";
+  const teks = (value: unknown) => (typeof value === "string" ? value : "");
 
   return {
     nama: teks(row.name),
@@ -126,6 +143,23 @@ function detailTokoDariDb(row: Record<string, unknown>): DetailToko {
     meja: row.dine_in_enabled === true,
     cod: false,
     kasir: row.pos_enabled === true,
+  };
+}
+
+function produkDariDb(row: Record<string, unknown>): Produk {
+  const teks = (value: unknown) => (typeof value === "string" ? value : "");
+  return {
+    id: String(row.id),
+    nama: teks(row.name),
+    deskripsi: teks(row.description),
+    sku: teks(row.sku),
+    kategoriId: typeof row.category_id === "string" ? row.category_id : null,
+    // kolom numeric bisa datang sebagai number atau string
+    harga: Number(row.price) || 0,
+    stok: Number(row.stock) || 0,
+    tersedia: row.is_available === true,
+    nonStok: row.is_non_stock === true,
+    gambarUrl: typeof row.image_url === "string" ? row.image_url : null,
   };
 }
 
@@ -181,13 +215,17 @@ type NilaiToko = {
   toko: DetailToko;
   pesanan: PesananMasuk[];
   produk: Produk[];
+  kategori: Kategori[];
   jumlahBaru: Record<JenisPesanan, number>;
   totalBaru: number;
   perbaruiToko: (patch: Partial<DetailToko>) => void;
   ubahBukaSekarang: () => void;
   ubahStatus: (pesananId: string, status: StatusPesanan) => void;
-  ubahTersedia: (produkId: number) => void;
-  tambahProduk: (p: Omit<Produk, "id">) => void;
+  ubahTersedia: (produkId: string) => void;
+  /** Menyimpan produk (dan foto) ke database. Melempar error jika gagal. */
+  tambahProduk: (p: InputProduk) => Promise<void>;
+  /** Memuat ulang daftar produk dari database. Melempar error jika gagal. */
+  muatUlangProduk: () => Promise<void>;
 };
 
 const TokoContext = createContext<NilaiToko | null>(null);
@@ -231,6 +269,20 @@ export function TokoProvider({ children }: { children: ReactNode }) {
   const [toko, setToko] = useState<DetailToko | null>(null);
   const [pesanan, setPesanan] = useState<PesananMasuk[]>([]);
   const [produk, setProduk] = useState<Produk[]>([]);
+  const [kategori, setKategori] = useState<Kategori[]>([]);
+
+  /** Mengambil produk aktif milik toko dari database. */
+  const ambilProduk = useCallback(async (): Promise<Produk[]> => {
+    const { data, error } = await supabase
+      .from("products")
+      .select(KOLOM_PRODUK)
+      .eq("shop_id", id)
+      .eq("is_active", true)
+      .order("sort_order", { ascending: true })
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    return (data ?? []).map(produkDariDb);
+  }, [supabase, id]);
 
   useEffect(() => {
     let batal = false;
@@ -239,6 +291,8 @@ export function TokoProvider({ children }: { children: ReactNode }) {
       setStatusMuat("loading");
       setGalatMuat("");
       setToko(null);
+      setProduk([]);
+      setKategori([]);
 
       if (
         !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
@@ -280,7 +334,30 @@ export function TokoProvider({ children }: { children: ReactNode }) {
           return;
         }
 
+        // Muat produk toko (hanya yang aktif)
+        const daftarProduk = await ambilProduk();
+        if (batal) return;
+
+        // Muat kategori milik toko ini. Gagal memuat kategori tidak boleh
+        // menggagalkan halaman, dropdown kategori akan disembunyikan saja.
+        const { data: dataKategori } = await supabase
+          .from("categories")
+          .select("id, name")
+          .eq("shop_id", id)
+          .eq("is_active", true)
+          .order("sort_order", { ascending: true })
+          .order("name", { ascending: true });
+
+        if (batal) return;
+
         setToko(detailTokoDariDb(data));
+        setProduk(daftarProduk);
+        setKategori(
+          (dataKategori ?? []).map((k) => ({
+            id: String(k.id),
+            nama: typeof k.name === "string" ? k.name : "",
+          }))
+        );
         setStatusMuat("ready");
       } catch (error) {
         if (batal) return;
@@ -297,7 +374,7 @@ export function TokoProvider({ children }: { children: ReactNode }) {
     return () => {
       batal = true;
     };
-  }, [id, cobaLagi, supabase]);
+  }, [id, cobaLagi, supabase, ambilProduk]);
 
   const perbaruiToko = useCallback((patch: Partial<DetailToko>) => {
     // TODO: simpan ke database
@@ -314,17 +391,105 @@ export function TokoProvider({ children }: { children: ReactNode }) {
     setPesanan((d) => d.map((p) => (p.id === pesananId ? { ...p, status } : p)));
   }, []);
 
-  const ubahTersedia = useCallback((produkId: number) => {
-    // TODO: simpan ke database
-    setProduk((d) =>
-      d.map((p) => (p.id === produkId ? { ...p, tersedia: !p.tersedia } : p))
-    );
-  }, []);
+  const ubahTersedia = useCallback(
+    async (produkId: string) => {
+      const lama = produk.find((p) => p.id === produkId);
+      if (!lama) return;
+      const baru = !lama.tersedia;
 
-  const tambahProduk = useCallback((p: Omit<Produk, "id">) => {
-    // TODO: simpan ke database
-    setProduk((d) => [{ ...p, id: Date.now() }, ...d]);
-  }, []);
+      // Optimistis: perbarui tampilan dulu
+      setProduk((d) =>
+        d.map((p) => (p.id === produkId ? { ...p, tersedia: baru } : p))
+      );
+
+      const { error } = await supabase
+        .from("products")
+        .update({ is_available: baru })
+        .eq("id", produkId)
+        .eq("shop_id", id);
+
+      // Gagal: kembalikan ke nilai semula
+      if (error) {
+        setProduk((d) =>
+          d.map((p) =>
+            p.id === produkId ? { ...p, tersedia: lama.tersedia } : p
+          )
+        );
+      }
+    },
+    [produk, supabase, id]
+  );
+
+  const tambahProduk = useCallback(
+    async (p: InputProduk) => {
+      // 1. Unggah foto (jika ada)
+      let gambarUrl: string | null = null;
+      let pathGambar: string | null = null;
+
+      if (p.gambar) {
+        const ekstensi =
+          p.gambar.name.split(".").pop()?.toLowerCase().replace(/[^a-z0-9]/g, "") ||
+          "jpg";
+        pathGambar = `${id}/${crypto.randomUUID()}.${ekstensi}`;
+
+        const { error: errorUnggah } = await supabase.storage
+          .from(BUCKET_PRODUK)
+          .upload(pathGambar, p.gambar, {
+            contentType: p.gambar.type,
+            cacheControl: "31536000",
+          });
+        if (errorUnggah) {
+          const pesan = /row-level security/i.test(errorUnggah.message)
+            ? "Tidak punya izin mengunggah ke bucket foto produk. Periksa policy Storage di Supabase."
+            : errorUnggah.message;
+          throw new Error(`Gagal mengunggah foto: ${pesan}`);
+        }
+
+        gambarUrl = supabase.storage.from(BUCKET_PRODUK).getPublicUrl(pathGambar)
+          .data.publicUrl;
+      }
+
+      // 2. Simpan produk
+      const { data, error } = await supabase
+        .from("products")
+        .insert({
+          shop_id: id,
+          category_id: p.kategoriId,
+          name: p.nama,
+          description: p.deskripsi || null,
+          // string kosong harus jadi NULL agar tidak bentrok dengan UNIQUE (shop_id, sku)
+          sku: p.sku || null,
+          price: p.harga,
+          image_url: gambarUrl,
+          // produk non-stock: stok tidak dilacak dan stok = 0
+          // (sesuai CHECK NOT (is_non_stock AND track_stock))
+          is_non_stock: p.nonStok,
+          track_stock: !p.nonStok,
+          stock: p.nonStok ? 0 : p.stok,
+          is_available: p.tersedia,
+        })
+        .select(KOLOM_PRODUK)
+        .single();
+
+      if (error) {
+        // Bersihkan foto yang sudah terunggah agar tidak jadi sampah
+        if (pathGambar) {
+          await supabase.storage.from(BUCKET_PRODUK).remove([pathGambar]);
+        }
+        if (error.code === "23505") {
+          throw new Error("SKU sudah dipakai produk lain di tokomu.");
+        }
+        throw error;
+      }
+
+      setProduk((d) => [produkDariDb(data), ...d]);
+    },
+    [supabase, id]
+  );
+
+  const muatUlangProduk = useCallback(async () => {
+    setProduk(await ambilProduk());
+  }, [ambilProduk]);
 
   const jumlahBaru = useMemo(() => {
     const hitung = (j: JenisPesanan) =>
@@ -386,6 +551,7 @@ export function TokoProvider({ children }: { children: ReactNode }) {
         toko,
         pesanan,
         produk,
+        kategori,
         jumlahBaru,
         totalBaru: jumlahBaru.antar + jumlahBaru.ambil + jumlahBaru.meja,
         perbaruiToko,
@@ -393,6 +559,7 @@ export function TokoProvider({ children }: { children: ReactNode }) {
         ubahStatus,
         ubahTersedia,
         tambahProduk,
+        muatUlangProduk,
       }}
     >
       {children}

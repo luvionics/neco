@@ -1,61 +1,37 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { AlertCircle, Package, Plus, Search, X } from "lucide-react";
-import { rupiah, useToko } from "../toko-context";
-import { Dialog, Saklar } from "../ui";
-
-type Galat = Partial<Record<"nama" | "harga" | "stok", string>>;
+import { Package, Plus, Search, X } from "lucide-react";
+import { rupiah, useToko, type InputProduk } from "../toko-context";
+import { Saklar } from "../ui";
+import FormProduct from "./components/formproduct";
 
 const BATAS_STOK = 5;
 
-// Gaya input modern (menggantikan INPUT bawaan agar seragam dengan halaman lain)
-const INPUT_MODERN =
-  "w-full rounded-xl border border-gray-200 bg-gray-50/70 px-3.5 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 outline-none transition focus:border-orange-400 focus:bg-white focus:ring-4 focus:ring-orange-500/10";
-
-function PesanGalat({ children }: { children: string }) {
-  return (
-    <p role="alert" className="flex items-center gap-1 text-xs text-red-600">
-      <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-      {children}
-    </p>
-  );
-}
-
 export default function ProdukPage() {
-  const { toko, produk, ubahTersedia, tambahProduk } = useToko();
+  const { toko, produk, kategori, ubahTersedia, tambahProduk } = useToko();
 
   const [cari, setCari] = useState("");
   const [tambah, setTambah] = useState(false);
-  const [draf, setDraf] = useState({ nama: "", harga: "", stok: "" });
-  const [galat, setGalat] = useState<Galat>({});
+
+  const namaKategori = useMemo(
+    () => new Map(kategori.map((k) => [k.id, k.nama])),
+    [kategori]
+  );
 
   const tampil = useMemo(() => {
-    const q = cari.toLowerCase();
-    return produk.filter((p) => p.nama.toLowerCase().includes(q));
+    const q = cari.trim().toLowerCase();
+    return produk.filter(
+      (p) =>
+        p.nama.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)
+    );
   }, [produk, cari]);
 
   const jumlahTersedia = produk.filter((p) => p.tersedia).length;
 
-  const bukaTambah = () => {
-    setDraf({ nama: "", harga: "", stok: "" });
-    setGalat({});
-    setTambah(true);
-  };
-
-  const simpan = () => {
-    const e: Galat = {};
-    const harga = Number(draf.harga);
-    const stok = Number(draf.stok);
-    if (draf.nama.trim().length < 2) e.nama = "Nama produk minimal 2 huruf";
-    if (!draf.harga || !Number.isFinite(harga) || harga <= 0)
-      e.harga = "Isi harga dengan angka lebih dari 0";
-    if (draf.stok === "" || !Number.isInteger(stok) || stok < 0)
-      e.stok = "Isi stok dengan angka bulat, minimal 0";
-    setGalat(e);
-    if (Object.keys(e).length > 0) return;
-
-    tambahProduk({ nama: draf.nama.trim(), harga, stok, tersedia: stok > 0 });
+  // Jika gagal, error dilempar ke FormProduct yang menampilkannya di dalam dialog
+  const simpanProduk = async (data: InputProduk) => {
+    await tambahProduk(data);
     setTambah(false);
   };
 
@@ -78,7 +54,7 @@ export default function ProdukPage() {
           <input
             value={cari}
             onChange={(e) => setCari(e.target.value)}
-            placeholder="Cari produk..."
+            placeholder="Cari nama atau SKU..."
             aria-label="Cari produk"
             className="w-full rounded-xl border border-gray-200 bg-white py-3 pl-10 pr-10 text-sm shadow-sm outline-none transition placeholder:text-gray-400 focus:border-orange-400 focus:ring-4 focus:ring-orange-500/10"
           />
@@ -93,7 +69,7 @@ export default function ProdukPage() {
           )}
         </div>
         <button
-          onClick={bukaTambah}
+          onClick={() => setTambah(true)}
           className="flex shrink-0 items-center gap-1.5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-orange-500/25 transition-all hover:shadow-lg hover:shadow-orange-500/30 active:scale-[0.98]"
         >
           <Plus className="h-4 w-4" />
@@ -116,7 +92,7 @@ export default function ProdukPage() {
             </p>
           </div>
           <button
-            onClick={bukaTambah}
+            onClick={() => setTambah(true)}
             className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-orange-500/25 transition-all hover:shadow-lg hover:shadow-orange-500/30 active:scale-[0.98]"
           >
             <Plus className="h-4 w-4" />
@@ -135,20 +111,62 @@ export default function ProdukPage() {
       ) : (
         <ul className="grid gap-3 md:grid-cols-2">
           {tampil.map((p) => {
-            const habis = p.stok === 0;
-            const menipis = !habis && p.stok <= BATAS_STOK;
+            const habis = !p.nonStok && p.stok === 0;
+            const menipis = !p.nonStok && !habis && p.stok <= BATAS_STOK;
+
+            const labelStok = p.nonStok
+              ? "Tanpa stok"
+              : habis
+              ? "Stok habis"
+              : `Stok ${p.stok}`;
+
+            const warnaBadge = p.nonStok
+              ? "bg-sky-50 text-sky-600"
+              : habis
+              ? "bg-red-50 text-red-600"
+              : menipis
+              ? "bg-amber-50 text-amber-600"
+              : "bg-gray-100 text-gray-600";
+
+            const warnaTitik = p.nonStok
+              ? "bg-sky-500"
+              : habis
+              ? "bg-red-500"
+              : menipis
+              ? "bg-amber-500"
+              : "bg-emerald-500";
+
+            const infoTambahan = [
+              p.kategoriId ? namaKategori.get(p.kategoriId) : null,
+              p.sku ? `SKU ${p.sku}` : null,
+            ]
+              .filter(Boolean)
+              .join(" · ");
+
             return (
               <li
                 key={p.id}
                 className="flex items-center gap-3.5 rounded-2xl border border-gray-100 bg-white p-3.5 shadow-sm transition-all duration-200 hover:border-orange-200 hover:shadow-lg hover:shadow-orange-500/10 md:p-4"
               >
-                <span
-                  className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br shadow-sm ${toko.warna} ${
-                    p.tersedia ? "" : "opacity-50 grayscale"
-                  }`}
-                >
-                  <Package className="h-7 w-7 text-white" />
-                </span>
+                {p.gambarUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={p.gambarUrl}
+                    alt={p.nama}
+                    loading="lazy"
+                    className={`h-14 w-14 shrink-0 rounded-2xl object-cover shadow-sm ${
+                      p.tersedia ? "" : "opacity-50 grayscale"
+                    }`}
+                  />
+                ) : (
+                  <span
+                    className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br shadow-sm ${toko.warna} ${
+                      p.tersedia ? "" : "opacity-50 grayscale"
+                    }`}
+                  >
+                    <Package className="h-7 w-7 text-white" />
+                  </span>
+                )}
 
                 <div className="min-w-0 flex-1">
                   <p
@@ -158,6 +176,11 @@ export default function ProdukPage() {
                   >
                     {p.nama}
                   </p>
+                  {infoTambahan && (
+                    <p className="truncate text-[11px] text-gray-400">
+                      {infoTambahan}
+                    </p>
+                  )}
                   <p
                     className={`mt-0.5 text-base font-extrabold leading-tight ${
                       p.tersedia ? "text-orange-600" : "text-gray-400"
@@ -166,24 +189,10 @@ export default function ProdukPage() {
                     {rupiah(p.harga)}
                   </p>
                   <span
-                    className={`mt-1.5 inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                      habis
-                        ? "bg-red-50 text-red-600"
-                        : menipis
-                        ? "bg-amber-50 text-amber-600"
-                        : "bg-gray-100 text-gray-600"
-                    }`}
+                    className={`mt-1.5 inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ${warnaBadge}`}
                   >
-                    <span
-                      className={`h-1.5 w-1.5 rounded-full ${
-                        habis
-                          ? "bg-red-500"
-                          : menipis
-                          ? "bg-amber-500"
-                          : "bg-emerald-500"
-                      }`}
-                    />
-                    {habis ? "Stok habis" : `Stok ${p.stok}`}
+                    <span className={`h-1.5 w-1.5 rounded-full ${warnaTitik}`} />
+                    {labelStok}
                   </span>
                 </div>
 
@@ -202,91 +211,7 @@ export default function ProdukPage() {
       )}
 
       {tambah && (
-        <Dialog judul="Tambah produk" onTutup={() => setTambah(false)}>
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-bold text-gray-900">Tambah produk</h2>
-            <button
-              onClick={() => setTambah(false)}
-              aria-label="Tutup"
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 text-gray-500 transition-colors hover:bg-gray-200 hover:text-gray-700"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-
-          <div className="space-y-1.5">
-            <label
-              htmlFor="p-nama"
-              className="block text-sm font-medium text-gray-700"
-            >
-              Nama produk
-            </label>
-            <input
-              id="p-nama"
-              value={draf.nama}
-              onChange={(e) => setDraf({ ...draf, nama: e.target.value })}
-              placeholder="Contoh: Beras 5 kg"
-              className={INPUT_MODERN}
-            />
-            {galat.nama && <PesanGalat>{galat.nama}</PesanGalat>}
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label
-                htmlFor="p-harga"
-                className="block text-sm font-medium text-gray-700"
-              >
-                Harga (Rp)
-              </label>
-              <input
-                id="p-harga"
-                type="number"
-                inputMode="numeric"
-                min={0}
-                value={draf.harga}
-                onChange={(e) => setDraf({ ...draf, harga: e.target.value })}
-                placeholder="68000"
-                className={INPUT_MODERN}
-              />
-              {galat.harga && <PesanGalat>{galat.harga}</PesanGalat>}
-            </div>
-            <div className="space-y-1.5">
-              <label
-                htmlFor="p-stok"
-                className="block text-sm font-medium text-gray-700"
-              >
-                Stok
-              </label>
-              <input
-                id="p-stok"
-                type="number"
-                inputMode="numeric"
-                min={0}
-                value={draf.stok}
-                onChange={(e) => setDraf({ ...draf, stok: e.target.value })}
-                placeholder="24"
-                className={INPUT_MODERN}
-              />
-              {galat.stok && <PesanGalat>{galat.stok}</PesanGalat>}
-            </div>
-          </div>
-
-          <div className="flex gap-2.5 pt-1">
-            <button
-              onClick={() => setTambah(false)}
-              className="flex-1 rounded-xl border border-gray-200 bg-white py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
-            >
-              Batal
-            </button>
-            <button
-              onClick={simpan}
-              className="flex-1 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 py-2.5 text-sm font-semibold text-white shadow-md shadow-orange-500/25 transition-all hover:shadow-lg hover:shadow-orange-500/30 active:scale-[0.98]"
-            >
-              Simpan produk
-            </button>
-          </div>
-        </Dialog>
+        <FormProduct onTutup={() => setTambah(false)} onSimpan={simpanProduk} />
       )}
     </div>
   );
