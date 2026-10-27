@@ -14,7 +14,7 @@ import {
   Settings,
 } from "lucide-react";
 import { STATUS_TOKO, urlHalamanToko, useToko } from "./toko-context";
-import { Saklar } from "./ui";
+import { Saklar } from "../ui";
 
 export default function Navbar() {
   const { id, base, toko, totalBaru, ubahBukaSekarang } = useToko();
@@ -26,17 +26,18 @@ export default function Navbar() {
   // Menu Pesanan hanya ada jika minimal satu layanan pembeli diaktifkan
   const adaPesanan = toko.antar || toko.ambil || toko.meja;
 
+  // Urutan menu: Ringkasan, Kasir, Pesanan, Produk, Pengaturan
   const MENU = [
     { href: base, label: "Ringkasan", ikon: LayoutDashboard, cocok: pathname === base, jumlah: 0 },
-    ...(adaPesanan
-      ? [{ href: `${base}/pesanan`, label: "Pesanan", ikon: Receipt, cocok: pathname.startsWith(`${base}/pesanan`), jumlah: totalBaru }]
-      : []),
-    { href: `${base}/produk`, label: "Produk", ikon: Package, cocok: pathname.startsWith(`${base}/produk`), jumlah: 0 },
     // Menu Kasir hanya ada jika fitur kasir diaktifkan
     ...(toko.kasir
       ? [{ href: `${base}/kasir`, label: "Kasir", ikon: Calculator, cocok: pathname.startsWith(`${base}/kasir`), jumlah: 0 }]
       : []),
-       { href: `${base}/pengaturan`, label: "Pengaturan toko", ikon: Settings, cocok: pathname.startsWith(`${base}/pengaturan`), jumlah: 0 },
+    ...(adaPesanan
+      ? [{ href: `${base}/pesanan`, label: "Pesanan", ikon: Receipt, cocok: pathname.startsWith(`${base}/pesanan`), jumlah: totalBaru }]
+      : []),
+    { href: `${base}/produk`, label: "Produk", ikon: Package, cocok: pathname.startsWith(`${base}/produk`), jumlah: 0 },
+    { href: `${base}/pengaturan`, label: "Pengaturan toko", ikon: Settings, cocok: pathname.startsWith(`${base}/pengaturan`), jumlah: 0 },
   ];
 
   const titik = (

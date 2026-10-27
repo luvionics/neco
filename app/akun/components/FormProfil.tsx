@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Loader2 } from "lucide-react";
-import Bidang, { PesanGalat, kelasInput } from "./Bidang";
+import { ArrowLeft, Loader2, Save } from "lucide-react";
+import Bidang, { kelasInput } from "./Bidang";
 import PilihLokasi from "./PilihLokasi";
 import UnggahFoto from "./UnggahFoto";
+import { useToast } from "@/components/toast";
+import { useModal } from "@/components/modal";
 import {
   OPSI_GENDER,
   bersihkan,
@@ -15,7 +17,10 @@ import {
 } from "./profil";
 
 const TOMBOL_UTAMA =
-  "bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-md shadow-orange-500/25 transition-all hover:shadow-lg hover:shadow-orange-500/30 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70";
+  "bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-lg shadow-orange-500/30 transition-all hover:shadow-xl hover:shadow-orange-500/40 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70";
+
+// Posisi tombol melayang di pojok kanan bawah (memperhitungkan safe area di HP)
+const POSISI_TOMBOL = "bottom-[calc(1rem+env(safe-area-inset-bottom))] md:bottom-8";
 
 type Props = {
   userId: string;
@@ -24,8 +29,18 @@ type Props = {
   daftarArea: string[];
   // Kembalikan pesan galat bila gagal, atau null bila berhasil
   onSimpan: (data: Profil) => Promise<string | null>;
+  // Dipanggil setiap kali foto berhasil tersimpan otomatis ("" bila dihapus)
+  onGambarTersimpan: (kunci: "avatar" | "fotoRumah", url: string) => void;
   onTutup: () => void;
 };
+
+// Bagian teks saja. Foto tersimpan otomatis sehingga tidak dihitung sebagai perubahan.
+function bidangTeks(p: Profil): string {
+  const salinan: Partial<Profil> = { ...p };
+  delete salinan.avatar;
+  delete salinan.fotoRumah;
+  return JSON.stringify(salinan);
+}
 
 function Bagian({
   judul,
@@ -53,30 +68,62 @@ export default function FormProfil({
   mode,
   daftarArea,
   onSimpan,
+  onGambarTersimpan,
   onTutup,
 }: Props) {
+  const toast = useToast();
+  const modal = useModal();
+
   const [draf, setDraf] = useState<Profil>(awal);
   const [galat, setGalat] = useState<Galat>({});
-  const [galatSimpan, setGalatSimpan] = useState("");
   const [menyimpan, setMenyimpan] = useState(false);
+
+  // Jumlah foto yang sedang diunggah/dihapus
+  const [sibukAvatar, setSibukAvatar] = useState(false);
+  const [sibukRumah, setSibukRumah] = useState(false);
+  const sibukFoto = sibukAvatar || sibukRumah;
+
+  // Pembanding perubahan teks. Diambil sekali saat form dibuka, lalu diperbarui
+  // hanya bila simpan berhasil.
+  const [teksAwal, setTeksAwal] = useState(() => bidangTeks(awal));
 
   // Kolom yang kosong saat form dibuka (dipakai untuk penanda di mode lengkapi)
   const [kurangAwal] = useState<(keyof Profil)[]>(() =>
     kolomKurang(awal).map((k) => k.key)
   );
 
-  const berubah = JSON.stringify(draf) !== JSON.stringify(awal);
+  // Ada perubahan pada input teks yang belum disimpan
+  const adaPerubahan = bidangTeks(draf) !== teksAwal;
 
-  const tutup = () => {
-    if (menyimpan) return;
-    if (berubah && !window.confirm("Perubahan belum disimpan. Tutup tanpa menyimpan?"))
-      return;
+  const tutup = async () => {
+    if (menyimpan || sibukFoto) return;
+    if (adaPerubahan) {
+      const setuju = await modal.konfirmasi({
+        jenis: "peringatan",
+        judul: "Tutup tanpa menyimpan?",
+        deskripsi: "Perubahan data yang belum disimpan akan hilang.",
+        teksBatal: "Lanjut mengisi",
+        teksSetuju: "Tutup",
+      });
+      if (!setuju) return;
+    }
     onTutup();
   };
   const tutupRef = useRef(tutup);
   useEffect(() => {
     tutupRef.current = tutup;
   });
+
+  // Peringatkan sebelum menutup tab bila ada perubahan teks belum tersimpan
+  useEffect(() => {
+    if (!adaPerubahan) return;
+    const onSebelumTutup = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onSebelumTutup);
+    return () => window.removeEventListener("beforeunload", onSebelumTutup);
+  }, [adaPerubahan]);
 
   // Kunci scroll halaman di belakang, dan tutup dengan tombol Esc
   useEffect(() => {
@@ -113,27 +160,44 @@ export default function FormProfil({
     ) =>
       setDraf((d) => ({ ...d, [k]: e.target.value }));
 
-  const isi = (k: keyof Profil) => (v: string) => setDraf((d) => ({ ...d, [k]: v }));
-
   const kosong = (k: keyof Profil) =>
     mode === "lengkapi" && kurangAwal.includes(k) && !draf[k].trim();
+
+  // Foto sudah tersimpan di bucket dan database: samakan draf dan beri tahu induk
+  const gambarTersimpan = (kunci: "avatar" | "fotoRumah") => (url: string) => {
+    setDraf((d) => ({ ...d, [kunci]: url }));
+    onGambarTersimpan(kunci, url);
+  };
+
+  // Batalkan semua perubahan teks (foto tidak ikut, karena sudah tersimpan)
+  const batalkanPerubahan = () => {
+    setDraf((d) => ({ ...awal, avatar: d.avatar, fotoRumah: d.fotoRumah }));
+    setGalat({});
+  };
 
   const simpan = async () => {
     const bersih = bersihkan(draf);
     const e = validasi(bersih);
     setGalat(e);
-    setGalatSimpan("");
 
     if (Object.keys(e).length > 0) {
       fokus(Object.keys(e)[0]);
+      toast.peringatan("Data belum lengkap", "Periksa kolom yang ditandai merah.");
       return;
     }
 
     setMenyimpan(true);
     const pesan = await onSimpan(bersih);
     setMenyimpan(false);
-    if (pesan) setGalatSimpan(pesan);
-    // Kalau berhasil, halaman induk yang menutup form
+
+    if (pesan) {
+      toast.galat("Gagal menyimpan perubahan", pesan);
+      return;
+    }
+
+    // Berhasil: induk menutup form
+    setTeksAwal(bidangTeks(bersih));
+    toast.sukses("Perubahan tersimpan", "Profilmu berhasil diperbarui.");
   };
 
   const judul = mode === "lengkapi" ? "Lengkapi data" : "Ubah profil";
@@ -153,7 +217,7 @@ export default function FormProfil({
           <button
             type="button"
             onClick={tutup}
-            disabled={menyimpan}
+            disabled={menyimpan || sibukFoto}
             aria-label="Kembali"
             className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 text-gray-600 transition-colors hover:bg-gray-200 disabled:opacity-50"
           >
@@ -178,19 +242,14 @@ export default function FormProfil({
       {/* ISI FORM */}
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-2xl space-y-4 px-3 py-4 md:space-y-5 md:px-4 md:py-6">
-          {galatSimpan && (
-            <div className="rounded-xl bg-red-50 px-3.5 py-2.5 ring-1 ring-red-100">
-              <PesanGalat>{galatSimpan}</PesanGalat>
-            </div>
-          )}
-
           <Bagian judul="Foto profil">
             <UnggahFoto
               id="f-avatar"
               jenis="avatar"
               userId={userId}
               value={draf.avatar}
-              onChange={isi("avatar")}
+              onTersimpan={gambarTersimpan("avatar")}
+              onSibuk={setSibukAvatar}
               inisial={inisial}
               kosong={kosong("avatar")}
             />
@@ -446,38 +505,51 @@ export default function FormProfil({
                 jenis="rumah"
                 userId={userId}
                 value={draf.fotoRumah}
-                onChange={isi("fotoRumah")}
+                onTersimpan={gambarTersimpan("fotoRumah")}
+                onSibuk={setSibukRumah}
               />
               <p className="text-xs text-gray-400">
                 Opsional, membantu kurir mengenali rumahmu
               </p>
             </div>
           </Bagian>
+
+          {/* Ruang kosong agar konten terakhir tidak tertutup tombol melayang */}
+          <div aria-hidden className="h-20" />
         </div>
       </div>
 
-      {/* BAR BAWAH */}
-      <footer className="shrink-0 border-t border-gray-100 bg-white pb-[env(safe-area-inset-bottom)]">
-        <div className="mx-auto flex max-w-2xl gap-2.5 px-3 py-3 md:px-4">
-          <button
-            type="button"
-            onClick={tutup}
-            disabled={menyimpan}
-            className="flex-1 rounded-xl border border-gray-200 bg-white py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
-          >
-            Batal
-          </button>
-          <button
-            type="button"
-            onClick={simpan}
-            disabled={menyimpan}
-            className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold ${TOMBOL_UTAMA}`}
-          >
-            {menyimpan && <Loader2 className="h-4 w-4 animate-spin" />}
-            Simpan perubahan
-          </button>
-        </div>
-      </footer>
+      {/* TOMBOL MELAYANG: muncul hanya bila ada perubahan pada input teks */}
+      <div
+        aria-hidden={!adaPerubahan}
+        className={`pointer-events-none fixed right-4 z-[60] flex items-center gap-2 transition-all duration-200 md:right-8 ${POSISI_TOMBOL} ${
+          adaPerubahan ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0"
+        }`}
+      >
+        <button
+          type="button"
+          onClick={batalkanPerubahan}
+          tabIndex={adaPerubahan ? 0 : -1}
+          disabled={!adaPerubahan || menyimpan}
+          className="pointer-events-auto rounded-full border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-700 shadow-lg transition-colors hover:bg-gray-50 disabled:opacity-50"
+        >
+          Batal
+        </button>
+        <button
+          type="button"
+          onClick={simpan}
+          tabIndex={adaPerubahan ? 0 : -1}
+          disabled={!adaPerubahan || menyimpan || sibukFoto}
+          className={`pointer-events-auto inline-flex items-center gap-2 rounded-full px-5 py-3 text-sm font-semibold ${TOMBOL_UTAMA}`}
+        >
+          {menyimpan ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Save className="h-4 w-4" />
+          )}
+          {menyimpan ? "Menyimpan..." : "Simpan perubahan"}
+        </button>
+      </div>
     </div>
   );
 }

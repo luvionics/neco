@@ -18,7 +18,7 @@ import {
   Users,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { rupiah, useToko, type JenisPesanan } from "../toko-context";
+import { rupiah, useToko, type JenisPesanan } from "../components/toko-context";
 import { Dialog, JENIS_PESANAN, SEMBUNYIKAN_SCROLLBAR } from "../ui";
 
 // ---------- Tipe ----------

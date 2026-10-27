@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Package, Plus, Search, X } from "lucide-react";
-import { rupiah, useToko, type InputProduk } from "../toko-context";
+import { rupiah, useToko, type InputProduk } from "../components/toko-context";
 import { Saklar } from "../ui";
 import FormProduct from "./components/formproduct";
 

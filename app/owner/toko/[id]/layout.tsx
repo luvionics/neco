@@ -5,8 +5,8 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { AlertCircle, Clock } from "lucide-react";
-import Navbar from "./navbar";
-import { TokoProvider, useToko } from "./toko-context";
+import Navbar from "./components/navbar";
+import { TokoProvider, useToko } from "./components/toko-context";
 
 function Cangkang({ children }: { children: ReactNode }) {
   const { toko, base } = useToko();

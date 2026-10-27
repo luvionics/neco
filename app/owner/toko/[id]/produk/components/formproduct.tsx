@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { AlertCircle, ImagePlus, Loader2, X } from "lucide-react";
-import { useToko, type InputProduk } from "../../toko-context";
+import { useToko, type InputProduk } from "../../components/toko-context";
 import { Dialog, Saklar } from "../../ui";
 
 type Galat = Partial<Record<"nama" | "harga" | "stok" | "gambar", string>>;

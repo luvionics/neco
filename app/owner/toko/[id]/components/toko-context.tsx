@@ -13,6 +13,7 @@ import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
 import { Store } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { useToast } from "@/components/toast";
 
 // ---------- Tipe ----------
 
@@ -218,10 +219,12 @@ type NilaiToko = {
   kategori: Kategori[];
   jumlahBaru: Record<JenisPesanan, number>;
   totalBaru: number;
+  /** Memperbarui data ringkas toko di context (tampilan saja, tidak menyimpan ke database). */
   perbaruiToko: (patch: Partial<DetailToko>) => void;
   ubahBukaSekarang: () => void;
   ubahStatus: (pesananId: string, status: StatusPesanan) => void;
-  ubahTersedia: (produkId: string) => void;
+  /** Mengubah ketersediaan produk. Gagal ditampilkan lewat toast. */
+  ubahTersedia: (produkId: string) => Promise<void>;
   /** Menyimpan produk (dan foto) ke database. Melempar error jika gagal. */
   tambahProduk: (p: InputProduk) => Promise<void>;
   /** Memuat ulang daftar produk dari database. Melempar error jika gagal. */
@@ -261,6 +264,7 @@ export function TokoProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const id = params.id;
   const supabase = useMemo(() => createClient(), []);
+  const toast = useToast();
   const [statusMuat, setStatusMuat] = useState<
     "loading" | "unauthenticated" | "error" | "not-found" | "ready"
   >("loading");
@@ -377,7 +381,7 @@ export function TokoProvider({ children }: { children: ReactNode }) {
   }, [id, cobaLagi, supabase, ambilProduk]);
 
   const perbaruiToko = useCallback((patch: Partial<DetailToko>) => {
-    // TODO: simpan ke database
+    // Hanya memperbarui tampilan. Penyimpanan ke database dilakukan oleh halaman pengaturan.
     setToko((t) => (t ? { ...t, ...patch } : t));
   }, []);
 
@@ -397,27 +401,51 @@ export function TokoProvider({ children }: { children: ReactNode }) {
       if (!lama) return;
       const baru = !lama.tersedia;
 
-      // Optimistis: perbarui tampilan dulu
-      setProduk((d) =>
-        d.map((p) => (p.id === produkId ? { ...p, tersedia: baru } : p))
-      );
-
-      const { error } = await supabase
-        .from("products")
-        .update({ is_available: baru })
-        .eq("id", produkId)
-        .eq("shop_id", id);
-
-      // Gagal: kembalikan ke nilai semula
-      if (error) {
+      const kembalikan = () =>
         setProduk((d) =>
           d.map((p) =>
             p.id === produkId ? { ...p, tersedia: lama.tersedia } : p
           )
         );
+
+      // Optimistis: perbarui tampilan dulu
+      setProduk((d) =>
+        d.map((p) => (p.id === produkId ? { ...p, tersedia: baru } : p))
+      );
+
+      try {
+        const { data, error } = await supabase
+          .from("products")
+          .update({ is_available: baru })
+          .eq("id", produkId)
+          .eq("shop_id", id)
+          .select("id");
+
+        if (error) {
+          console.error("Gagal mengubah ketersediaan produk:", error);
+          kembalikan();
+          toast.galat("Gagal mengubah ketersediaan produk", error.message);
+          return;
+        }
+
+        // RLS yang menolak update tidak mengembalikan error, hanya 0 baris
+        if (!data || data.length === 0) {
+          kembalikan();
+          toast.galat(
+            "Perubahan tidak tersimpan",
+            "Kamu tidak punya izin mengubah produk ini, atau produk tidak ditemukan."
+          );
+        }
+      } catch (e) {
+        console.error("Gagal mengubah ketersediaan produk:", e);
+        kembalikan();
+        toast.galat(
+          "Gagal mengubah ketersediaan produk",
+          "Periksa koneksi internet lalu coba lagi."
+        );
       }
     },
-    [produk, supabase, id]
+    [produk, supabase, id, toast]
   );
 
   const tambahProduk = useCallback(

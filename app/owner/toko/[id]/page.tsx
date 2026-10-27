@@ -15,7 +15,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { rupiah, useToko } from "./toko-context";
+import { rupiah, useToko } from "./components/toko-context";
 import { JENIS_PESANAN } from "./ui";
 
 const BATAS_STOK = 5;

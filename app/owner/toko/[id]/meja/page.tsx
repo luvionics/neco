@@ -19,7 +19,7 @@ import {
   Users,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { urlHalamanToko, useToko } from "../toko-context";
+import { urlHalamanToko, useToko } from "../components/toko-context";
 import { Dialog, Saklar } from "../ui";
 
 // ---------- Tipe ----------

@@ -581,6 +581,7 @@ export default function AkunPage() {
           mode={formBuka}
           daftarArea={daftarArea}
           onSimpan={simpanProfil}
+          onGambarTersimpan={(kunci, url) => setProfil((p) => ({ ...p, [kunci]: url }))}
           onTutup={() => setFormBuka(null)}
         />
       )}

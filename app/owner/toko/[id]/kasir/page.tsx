@@ -20,7 +20,7 @@ import {
   X,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { rupiah, useToko, type Produk } from "../toko-context";
+import { rupiah, useToko, type Produk } from "../components/toko-context";
 import { Dialog } from "../ui";
 
 // ---------- Tipe & konstanta ----------
