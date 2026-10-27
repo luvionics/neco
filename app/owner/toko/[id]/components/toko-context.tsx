@@ -7,13 +7,14 @@ import {
   useEffect,
   useMemo,
   useState,
+  type Dispatch,
   type ReactNode,
+  type SetStateAction,
 } from "react";
 import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
 import { Store } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { useToast } from "@/components/toast";
 
 // ---------- Tipe ----------
 
@@ -73,7 +74,7 @@ export type Produk = {
   harga: number;
   stok: number;
   tersedia: boolean; // is_available
-  nonStok: boolean; // is_non_stock
+  nonStok: boolean; // turunan dari track_stock: true jika track_stock = false
   gambarUrl: string | null; // image_url
 };
 
@@ -89,13 +90,10 @@ export type Kategori = { id: string; nama: string };
 /** Alamat halaman toko yang dilihat pembeli. Sesuaikan dengan rute aslinya. */
 export const urlHalamanToko = (id: string) => `/toko/${id}`;
 
-/** Nama bucket Supabase Storage untuk foto produk (harus public). */
-const BUCKET_PRODUK = "product-images";
-
 type JamBuka = { open: string; close: string } | null;
 
 const KOLOM_PRODUK =
-  "id, name, description, sku, category_id, price, stock, is_available, is_non_stock, image_url";
+  "id, name, description, sku, category_id, price, stock, is_available, track_stock, image_url";
 
 function statusDariDb(status: unknown): StatusToko {
   switch (status) {
@@ -159,14 +157,16 @@ function produkDariDb(row: Record<string, unknown>): Produk {
     harga: Number(row.price) || 0,
     stok: Number(row.stock) || 0,
     tersedia: row.is_available === true,
-    nonStok: row.is_non_stock === true,
+    // produk tanpa stok = stok tidak dilacak
+    nonStok: row.track_stock !== true,
     gambarUrl: typeof row.image_url === "string" ? row.image_url : null,
   };
 }
 
 export const STATUS_TOKO: Record<StatusToko, { label: string; kelas: string }> = {
   aktif: { label: "Aktif", kelas: "bg-white/25 text-white" },
-  menunggu: { label: "Menunggu verifikasi", kelas: "bg-amber-100 text-amber-700" },
+  // Verifikasi hanya label internal, bukan penghalang: tampil sama seperti aktif.
+  menunggu: { label: "Aktif", kelas: "bg-white/25 text-white" },
   ditolak: { label: "Perlu diperbaiki", kelas: "bg-red-100 text-red-700" },
   nonaktif: { label: "Nonaktif", kelas: "bg-gray-200 text-gray-600" },
 };
@@ -216,6 +216,8 @@ type NilaiToko = {
   toko: DetailToko;
   pesanan: PesananMasuk[];
   produk: Produk[];
+  /** Untuk pembaruan tampilan produk secara lokal (penyimpanan dilakukan halaman Produk). */
+  setProduk: Dispatch<SetStateAction<Produk[]>>;
   kategori: Kategori[];
   jumlahBaru: Record<JenisPesanan, number>;
   totalBaru: number;
@@ -223,10 +225,6 @@ type NilaiToko = {
   perbaruiToko: (patch: Partial<DetailToko>) => void;
   ubahBukaSekarang: () => void;
   ubahStatus: (pesananId: string, status: StatusPesanan) => void;
-  /** Mengubah ketersediaan produk. Gagal ditampilkan lewat toast. */
-  ubahTersedia: (produkId: string) => Promise<void>;
-  /** Menyimpan produk (dan foto) ke database. Melempar error jika gagal. */
-  tambahProduk: (p: InputProduk) => Promise<void>;
   /** Memuat ulang daftar produk dari database. Melempar error jika gagal. */
   muatUlangProduk: () => Promise<void>;
 };
@@ -264,7 +262,6 @@ export function TokoProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const id = params.id;
   const supabase = useMemo(() => createClient(), []);
-  const toast = useToast();
   const [statusMuat, setStatusMuat] = useState<
     "loading" | "unauthenticated" | "error" | "not-found" | "ready"
   >("loading");
@@ -395,126 +392,6 @@ export function TokoProvider({ children }: { children: ReactNode }) {
     setPesanan((d) => d.map((p) => (p.id === pesananId ? { ...p, status } : p)));
   }, []);
 
-  const ubahTersedia = useCallback(
-    async (produkId: string) => {
-      const lama = produk.find((p) => p.id === produkId);
-      if (!lama) return;
-      const baru = !lama.tersedia;
-
-      const kembalikan = () =>
-        setProduk((d) =>
-          d.map((p) =>
-            p.id === produkId ? { ...p, tersedia: lama.tersedia } : p
-          )
-        );
-
-      // Optimistis: perbarui tampilan dulu
-      setProduk((d) =>
-        d.map((p) => (p.id === produkId ? { ...p, tersedia: baru } : p))
-      );
-
-      try {
-        const { data, error } = await supabase
-          .from("products")
-          .update({ is_available: baru })
-          .eq("id", produkId)
-          .eq("shop_id", id)
-          .select("id");
-
-        if (error) {
-          console.error("Gagal mengubah ketersediaan produk:", error);
-          kembalikan();
-          toast.galat("Gagal mengubah ketersediaan produk", error.message);
-          return;
-        }
-
-        // RLS yang menolak update tidak mengembalikan error, hanya 0 baris
-        if (!data || data.length === 0) {
-          kembalikan();
-          toast.galat(
-            "Perubahan tidak tersimpan",
-            "Kamu tidak punya izin mengubah produk ini, atau produk tidak ditemukan."
-          );
-        }
-      } catch (e) {
-        console.error("Gagal mengubah ketersediaan produk:", e);
-        kembalikan();
-        toast.galat(
-          "Gagal mengubah ketersediaan produk",
-          "Periksa koneksi internet lalu coba lagi."
-        );
-      }
-    },
-    [produk, supabase, id, toast]
-  );
-
-  const tambahProduk = useCallback(
-    async (p: InputProduk) => {
-      // 1. Unggah foto (jika ada)
-      let gambarUrl: string | null = null;
-      let pathGambar: string | null = null;
-
-      if (p.gambar) {
-        const ekstensi =
-          p.gambar.name.split(".").pop()?.toLowerCase().replace(/[^a-z0-9]/g, "") ||
-          "jpg";
-        pathGambar = `${id}/${crypto.randomUUID()}.${ekstensi}`;
-
-        const { error: errorUnggah } = await supabase.storage
-          .from(BUCKET_PRODUK)
-          .upload(pathGambar, p.gambar, {
-            contentType: p.gambar.type,
-            cacheControl: "31536000",
-          });
-        if (errorUnggah) {
-          const pesan = /row-level security/i.test(errorUnggah.message)
-            ? "Tidak punya izin mengunggah ke bucket foto produk. Periksa policy Storage di Supabase."
-            : errorUnggah.message;
-          throw new Error(`Gagal mengunggah foto: ${pesan}`);
-        }
-
-        gambarUrl = supabase.storage.from(BUCKET_PRODUK).getPublicUrl(pathGambar)
-          .data.publicUrl;
-      }
-
-      // 2. Simpan produk
-      const { data, error } = await supabase
-        .from("products")
-        .insert({
-          shop_id: id,
-          category_id: p.kategoriId,
-          name: p.nama,
-          description: p.deskripsi || null,
-          // string kosong harus jadi NULL agar tidak bentrok dengan UNIQUE (shop_id, sku)
-          sku: p.sku || null,
-          price: p.harga,
-          image_url: gambarUrl,
-          // produk non-stock: stok tidak dilacak dan stok = 0
-          // (sesuai CHECK NOT (is_non_stock AND track_stock))
-          is_non_stock: p.nonStok,
-          track_stock: !p.nonStok,
-          stock: p.nonStok ? 0 : p.stok,
-          is_available: p.tersedia,
-        })
-        .select(KOLOM_PRODUK)
-        .single();
-
-      if (error) {
-        // Bersihkan foto yang sudah terunggah agar tidak jadi sampah
-        if (pathGambar) {
-          await supabase.storage.from(BUCKET_PRODUK).remove([pathGambar]);
-        }
-        if (error.code === "23505") {
-          throw new Error("SKU sudah dipakai produk lain di tokomu.");
-        }
-        throw error;
-      }
-
-      setProduk((d) => [produkDariDb(data), ...d]);
-    },
-    [supabase, id]
-  );
-
   const muatUlangProduk = useCallback(async () => {
     setProduk(await ambilProduk());
   }, [ambilProduk]);
@@ -579,14 +456,13 @@ export function TokoProvider({ children }: { children: ReactNode }) {
         toko,
         pesanan,
         produk,
+        setProduk,
         kategori,
         jumlahBaru,
         totalBaru: jumlahBaru.antar + jumlahBaru.ambil + jumlahBaru.meja,
         perbaruiToko,
         ubahBukaSekarang,
         ubahStatus,
-        ubahTersedia,
-        tambahProduk,
         muatUlangProduk,
       }}
     >
