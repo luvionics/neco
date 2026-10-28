@@ -1,13 +1,24 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
-import { AlertCircle, ImagePlus, Loader2, Plus, Trash2, X } from "lucide-react";
+import { useEffect, useId, useMemo, useState } from "react";
 import {
+  AlertCircle,
+  ImagePlus,
+  Loader2,
+  Plus,
+  Tags,
+  Trash2,
+  X,
+} from "lucide-react";
+import {
+  hargaSetelahDiskon, // BARU (diskon)
+  rupiah, // BARU (diskon)
   useToko,
   type InputProduk,
   type Produk,
 } from "../../components/toko-context";
 import { Saklar } from "../../ui";
+import KelolaKategori from "./kelola-kategori";
 
 /** Satu pilihan dalam grup, misalnya "Large" dengan tambahan harga 5000. */
 export type OpsiInput = {
@@ -33,7 +44,13 @@ export type InputUbahProduk = Omit<InputProduk, "gambar"> & {
   grup: GrupInput[];
 };
 
-type Galat = Partial<Record<"nama" | "harga" | "stok" | "gambar", string>>;
+// DIUBAH (diskon): ditambah diskonNilai dan diskonWaktu
+type Galat = Partial<
+  Record<
+    "nama" | "harga" | "stok" | "gambar" | "diskonNilai" | "diskonWaktu",
+    string
+  >
+>;
 
 type Props = {
   /** Jika diisi, form dalam mode ubah dan terisi data produk ini. */
@@ -63,6 +80,13 @@ type Draf = {
   stok: string;
   nonStok: boolean;
   tersedia: boolean;
+  // BARU (diskon)
+  diskonAktif: boolean;
+  diskonJenis: "persen" | "nominal";
+  diskonNilai: string;
+  /** Nilai input datetime-local, mis. 2026-10-28T08:30 (waktu lokal browser). */
+  diskonMulai: string;
+  diskonSelesai: string;
 };
 
 type DrafOpsi = { id: string; nama: string; harga: string; tersedia: boolean };
@@ -78,6 +102,24 @@ type DrafGrup = {
 const MAKS_GRUP = 10;
 const MAKS_OPSI = 20;
 
+/** BARU (diskon): ISO -> nilai input datetime-local (waktu lokal browser). */
+function isoKeInput(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const dua = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${dua(d.getMonth() + 1)}-${dua(d.getDate())}T${dua(
+    d.getHours()
+  )}:${dua(d.getMinutes())}`;
+}
+
+/** BARU (diskon): nilai input datetime-local -> ISO. null jika kosong atau tidak valid. */
+function inputKeIso(nilai: string): string | null {
+  if (!nilai) return null;
+  const d = new Date(nilai);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
 function drafAwal(produk?: Produk): Draf {
   return {
     nama: produk?.nama ?? "",
@@ -88,6 +130,12 @@ function drafAwal(produk?: Produk): Draf {
     stok: produk && !produk.nonStok ? String(produk.stok) : "",
     nonStok: produk?.nonStok ?? false,
     tersedia: produk?.tersedia ?? true,
+    // BARU (diskon)
+    diskonAktif: Boolean(produk?.diskonJenis),
+    diskonJenis: produk?.diskonJenis ?? "persen",
+    diskonNilai: produk?.diskonJenis ? String(produk.diskonNilai) : "",
+    diskonMulai: isoKeInput(produk?.diskonMulai ?? null),
+    diskonSelesai: isoKeInput(produk?.diskonSelesai ?? null),
   };
 }
 
@@ -184,6 +232,168 @@ function PesanGalat({ children }: { children: string }) {
       <AlertCircle className="h-3.5 w-3.5 shrink-0" />
       {children}
     </p>
+  );
+}
+
+/** BARU (diskon): bagian "Diskon" di form produk. */
+function BagianDiskon({
+  draf,
+  setDraf,
+  galat,
+}: {
+  draf: Draf;
+  setDraf: (d: Draf) => void;
+  galat: Galat;
+}) {
+  const harga = Number(draf.harga);
+  const nilai = Number(draf.diskonNilai);
+
+  // Pratinjau hanya jika harga dan nilai diskon sudah masuk akal
+  const bisaPratinjau =
+    draf.diskonAktif &&
+    Number.isFinite(harga) &&
+    harga > 0 &&
+    Number.isInteger(nilai) &&
+    nilai > 0 &&
+    (draf.diskonJenis === "persen" ? nilai <= 99 : nilai < harga);
+  const hargaDiskon = bisaPratinjau
+    ? hargaSetelahDiskon(harga, draf.diskonJenis, nilai)
+    : 0;
+
+  return (
+    <div className="space-y-3 rounded-2xl border border-gray-200 p-3.5">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-gray-800">
+            Diskon{" "}
+            <span className="font-normal text-gray-400">(opsional)</span>
+          </p>
+          <p className="text-xs text-gray-500">
+            Harga coret akan tampil selama masa diskon berlaku.
+          </p>
+        </div>
+        <Saklar
+          nyala={draf.diskonAktif}
+          onChange={() => setDraf({ ...draf, diskonAktif: !draf.diskonAktif })}
+          label="Aktifkan diskon produk"
+        />
+      </div>
+
+      {draf.diskonAktif && (
+        <div className="space-y-3">
+          {/* Jenis diskon */}
+          <div
+            role="group"
+            aria-label="Jenis diskon"
+            className="grid grid-cols-2 gap-1 rounded-xl bg-gray-100 p-1"
+          >
+            {(
+              [
+                { nilai: "persen", label: "Persen (%)" },
+                { nilai: "nominal", label: "Nominal (Rp)" },
+              ] as const
+            ).map((j) => (
+              <button
+                key={j.nilai}
+                type="button"
+                aria-pressed={draf.diskonJenis === j.nilai}
+                onClick={() =>
+                  setDraf({
+                    ...draf,
+                    diskonJenis: j.nilai,
+                    // nilai lama tidak berlaku lagi di jenis yang lain
+                    diskonNilai: draf.diskonJenis === j.nilai ? draf.diskonNilai : "",
+                  })
+                }
+                className={`rounded-lg py-2 text-sm font-medium transition-colors ${
+                  draf.diskonJenis === j.nilai
+                    ? "bg-white text-orange-600 shadow-sm"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                {j.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Nilai diskon */}
+          <div className="space-y-1.5">
+            <label
+              htmlFor="p-diskon-nilai"
+              className="block text-sm font-medium text-gray-700"
+            >
+              {draf.diskonJenis === "persen" ? "Besar diskon (%)" : "Potongan harga (Rp)"}
+            </label>
+            <input
+              id="p-diskon-nilai"
+              type="number"
+              inputMode="numeric"
+              min={1}
+              value={draf.diskonNilai}
+              onChange={(e) => setDraf({ ...draf, diskonNilai: e.target.value })}
+              placeholder={draf.diskonJenis === "persen" ? "10" : "5000"}
+              className={INPUT_MODERN}
+            />
+            {galat.diskonNilai && <PesanGalat>{galat.diskonNilai}</PesanGalat>}
+          </div>
+
+          {/* Masa berlaku */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <label
+                htmlFor="p-diskon-mulai"
+                className="block text-sm font-medium text-gray-700"
+              >
+                Mulai
+              </label>
+              <input
+                id="p-diskon-mulai"
+                type="datetime-local"
+                value={draf.diskonMulai}
+                onChange={(e) => setDraf({ ...draf, diskonMulai: e.target.value })}
+                className={INPUT_MODERN}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label
+                htmlFor="p-diskon-selesai"
+                className="block text-sm font-medium text-gray-700"
+              >
+                Berakhir
+              </label>
+              <input
+                id="p-diskon-selesai"
+                type="datetime-local"
+                value={draf.diskonSelesai}
+                onChange={(e) =>
+                  setDraf({ ...draf, diskonSelesai: e.target.value })
+                }
+                className={INPUT_MODERN}
+              />
+            </div>
+          </div>
+          {galat.diskonWaktu && <PesanGalat>{galat.diskonWaktu}</PesanGalat>}
+
+          {/* Pratinjau harga akhir */}
+          {bisaPratinjau && (
+            <div className="rounded-xl bg-orange-50 px-3.5 py-2.5 text-sm">
+              <p className="text-gray-600">
+                Harga setelah diskon:{" "}
+                <span className="font-bold text-orange-600">
+                  {rupiah(hargaDiskon)}
+                </span>{" "}
+                <span className="text-xs text-gray-400 line-through">
+                  {rupiah(harga)}
+                </span>
+              </p>
+              <p className="text-xs text-gray-500">
+                Pembeli hemat {rupiah(harga - hargaDiskon)}.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -383,12 +593,18 @@ export default function FormProduct({
   onPilihGambar,
   onHapusGambar,
 }: Props) {
-  const { kategori } = useToko();
+  const {
+    id: idToko,
+    kategori,
+    produk: daftarProduk,
+    muatUlangKategori,
+    muatUlangProduk,
+  } = useToko();
   const modeUbah = Boolean(produk);
   const idJudul = useId();
 
   // Nilai awal disimpan untuk mendeteksi ada tidaknya perubahan
-  const [awal] = useState(() => drafAwal(produk));
+  const [awal, setAwal] = useState(() => drafAwal(produk));
   const [draf, setDraf] = useState<Draf>(awal);
   const [grupAwalDraf] = useState<DrafGrup[]>(() =>
     (grupAwal ?? []).map(grupKeDraf)
@@ -403,8 +619,19 @@ export default function FormProduct({
   const [galat, setGalat] = useState<Galat>({});
   const [galatSimpan, setGalatSimpan] = useState("");
   const [menyimpan, setMenyimpan] = useState(false);
+  /** Dialog kelola kategori di dalam form. */
+  const [kelolaKategori, setKelolaKategori] = useState(false);
 
   const sibuk = menyimpan || mengunggah;
+
+  /** Jumlah produk per kategori, untuk keterangan di dialog kelola kategori. */
+  const jumlahPerKategori = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const p of daftarProduk) {
+      if (p.kategoriId) m.set(p.kategoriId, (m.get(p.kategoriId) ?? 0) + 1);
+    }
+    return m;
+  }, [daftarProduk]);
 
   // Ada perubahan yang belum disimpan?
   // Mode ubah: foto sudah tersimpan otomatis, jadi hanya isian dan pilihan yang dihitung.
@@ -422,6 +649,36 @@ export default function FormProduct({
       document.body.style.overflow = lama;
     };
   }, []);
+
+  // ---------- Kelola kategori dari dalam form ----------
+
+  /** Memuat ulang kategori (dan produk jika perlu) setelah ada perubahan di dialog. */
+  const segarkanKategori = async (muatProduk: boolean) => {
+    try {
+      await muatUlangKategori();
+    } catch (e) {
+      console.error("Kategori tersimpan, tetapi gagal memuat ulang daftar:", e);
+    }
+    if (muatProduk) {
+      try {
+        await muatUlangProduk();
+      } catch (e) {
+        console.error("Kategori terhapus, tetapi gagal memuat ulang produk:", e);
+      }
+    }
+  };
+
+  /** Kategori baru langsung dipilih di form. */
+  const pilihKategoriBaru = (idBaru: string) => {
+    setDraf((d) => ({ ...d, kategoriId: idBaru }));
+  };
+
+  /** Jika kategori yang sedang dipilih dihapus, kembali ke "Tanpa kategori". */
+  const kategoriDihapus = (idKategori: string) => {
+    setDraf((d) => (d.kategoriId === idKategori ? { ...d, kategoriId: "" } : d));
+    // Di database category_id produk ini sudah menjadi NULL, jadi bukan perubahan
+    setAwal((a) => (a.kategoriId === idKategori ? { ...a, kategoriId: "" } : a));
+  };
 
   const pilihGambar = async (file: File | undefined) => {
     if (!file || sibuk) return;
@@ -481,6 +738,33 @@ export default function FormProduct({
         e.stok = "Isi stok dengan angka bulat, minimal 0";
     }
 
+    // BARU (diskon): validasi hanya jika diskon diaktifkan
+    let diskonMulaiIso: string | null = null;
+    let diskonSelesaiIso: string | null = null;
+    if (draf.diskonAktif) {
+      const nilai = Number(draf.diskonNilai);
+      if (draf.diskonNilai === "" || !Number.isInteger(nilai) || nilai <= 0) {
+        e.diskonNilai = "Isi nilai diskon dengan angka bulat lebih dari 0";
+      } else if (draf.diskonJenis === "persen" && nilai > 99) {
+        e.diskonNilai = "Diskon persen maksimal 99%";
+      } else if (
+        draf.diskonJenis === "nominal" &&
+        Number.isFinite(harga) &&
+        harga > 0 &&
+        nilai >= harga
+      ) {
+        e.diskonNilai = "Potongan harus lebih kecil dari harga produk";
+      }
+
+      diskonMulaiIso = inputKeIso(draf.diskonMulai);
+      diskonSelesaiIso = inputKeIso(draf.diskonSelesai);
+      if (!diskonMulaiIso || !diskonSelesaiIso) {
+        e.diskonWaktu = "Isi tanggal mulai dan tanggal berakhir diskon";
+      } else if (new Date(diskonSelesaiIso) <= new Date(diskonMulaiIso)) {
+        e.diskonWaktu = "Tanggal berakhir harus setelah tanggal mulai";
+      }
+    }
+
     const eGrup = periksaGrup(grup);
 
     setGalat((g) => ({ ...e, gambar: g.gambar }));
@@ -502,6 +786,11 @@ export default function FormProduct({
         tersedia: draf.tersedia && (draf.nonStok || stok > 0),
         gambarUrl,
         grup: grupKeInput(grup),
+        // BARU (diskon)
+        diskonJenis: draf.diskonAktif ? draf.diskonJenis : null,
+        diskonNilai: draf.diskonAktif ? Number(draf.diskonNilai) : 0,
+        diskonMulai: draf.diskonAktif ? diskonMulaiIso : null,
+        diskonSelesai: draf.diskonAktif ? diskonSelesaiIso : null,
       });
     } catch (err) {
       setGalatSimpan(
@@ -622,22 +911,22 @@ export default function FormProduct({
           </div>
 
           {/* Kategori */}
-          {kategori.length > 0 && (
-            <div className="space-y-1.5">
-              <label
-                htmlFor="p-kategori"
-                className="block text-sm font-medium text-gray-700"
-              >
-                Kategori{" "}
-                <span className="font-normal text-gray-400">(opsional)</span>
-              </label>
+          <div className="space-y-1.5">
+            <label
+              htmlFor="p-kategori"
+              className="block text-sm font-medium text-gray-700"
+            >
+              Kategori{" "}
+              <span className="font-normal text-gray-400">(opsional)</span>
+            </label>
+            <div className="flex gap-2">
               <select
                 id="p-kategori"
                 value={draf.kategoriId}
                 onChange={(e) =>
                   setDraf({ ...draf, kategoriId: e.target.value })
                 }
-                className={INPUT_MODERN}
+                className={`${INPUT_MODERN} min-w-0 flex-1`}
               >
                 <option value="">Tanpa kategori</option>
                 {kategori.map((k) => (
@@ -646,8 +935,23 @@ export default function FormProduct({
                   </option>
                 ))}
               </select>
+              <button
+                type="button"
+                onClick={() => setKelolaKategori(true)}
+                disabled={sibuk}
+                aria-label="Tambah atau hapus kategori"
+                className="flex shrink-0 items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3.5 text-sm font-semibold text-gray-700 transition-colors hover:border-orange-300 hover:text-orange-600 disabled:opacity-50"
+              >
+                <Tags className="h-4 w-4" />
+                <span className="hidden sm:inline">Kelola</span>
+              </button>
             </div>
-          )}
+            {kategori.length === 0 && (
+              <p className="text-xs text-gray-500">
+                Belum ada kategori. Tekan Kelola untuk membuatnya.
+              </p>
+            )}
+          </div>
 
           {/* Deskripsi */}
           <div className="space-y-1.5">
@@ -705,6 +1009,9 @@ export default function FormProduct({
               />
             </div>
           </div>
+
+          {/* BARU (diskon) */}
+          <BagianDiskon draf={draf} setDraf={setDraf} galat={galat} />
 
           {/* Pilihan produk (variant) */}
           <BagianPilihan grup={grup} setGrup={setGrup} galat={galatGrup} />
@@ -804,6 +1111,19 @@ export default function FormProduct({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Dialog kelola kategori, dirender di dalam form agar tampil di atasnya */}
+      {kelolaKategori && (
+        <KelolaKategori
+          idToko={idToko}
+          kategori={kategori}
+          jumlahProduk={jumlahPerKategori}
+          onTutup={() => setKelolaKategori(false)}
+          onBerubah={segarkanKategori}
+          onDitambah={pilihKategoriBaru}
+          onDihapus={kategoriDihapus}
+        />
       )}
     </div>
   );

@@ -7,14 +7,16 @@ import {
   useRef,
   useState,
 } from "react";
-import { Loader2, Package, Pencil, Plus, Search, X } from "lucide-react";
+import { Loader2, Package, Pencil, Plus, Search, Tags, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/toast";
 import { useModal } from "@/components/modal";
 import {
+  hargaAkhir, // BARU (diskon)
+  labelDiskon, // BARU (diskon)
   rupiah,
+  statusDiskon, // BARU (diskon)
   useToko,
-  type InputProduk,
   type Produk,
 } from "../components/toko-context";
 import { Saklar } from "../ui";
@@ -22,6 +24,7 @@ import FormProduct, {
   type GrupInput,
   type InputUbahProduk,
 } from "./components/formproduct";
+import KelolaKategori from "./components/kelola-kategori";
 
 const BATAS_STOK = 5;
 
@@ -31,6 +34,10 @@ const UKURAN_TAHAP = 24;
 /** Bucket Supabase Storage (public). Foto produk ada di {idToko}/products/. */
 const BUCKET = "shops";
 const MAKS_UKURAN_GAMBAR = 2 * 1024 * 1024; // 2 MB
+
+/** Nilai khusus filter kategori. Selain ini, nilainya adalah id kategori. */
+const FILTER_SEMUA = "semua";
+const FILTER_TANPA = "tanpa";
 
 /** Baris hasil query grup pilihan beserta pilihannya. */
 type BarisGrup = {
@@ -120,11 +127,64 @@ function kolomProduk(
     track_stock: !p.nonStok,
     stock: p.nonStok ? 0 : p.stok,
     is_available: p.tersedia,
+    // BARU (diskon): keempat kolom diisi bersamaan atau dikosongkan bersamaan
+    discount_type:
+      p.diskonJenis === "persen"
+        ? "percent"
+        : p.diskonJenis === "nominal"
+        ? "amount"
+        : null,
+    discount_value: p.diskonJenis ? p.diskonNilai : null,
+    discount_starts_at: p.diskonJenis ? p.diskonMulai : null,
+    discount_ends_at: p.diskonJenis ? p.diskonSelesai : null,
   };
 }
 
+/** Chip filter kategori. */
+function ChipKategori({
+  aktif,
+  label,
+  jumlah,
+  onClick,
+}: {
+  aktif: boolean;
+  label: string;
+  jumlah: number;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={aktif}
+      className={`flex shrink-0 items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors ${
+        aktif
+          ? "border-orange-500 bg-orange-500 text-white shadow-sm shadow-orange-500/25"
+          : "border-gray-200 bg-white text-gray-600 hover:border-orange-300 hover:text-orange-600"
+      }`}
+    >
+      <span className="max-w-[10rem] truncate">{label}</span>
+      <span
+        className={`rounded-full px-1.5 text-[11px] font-semibold ${
+          aktif ? "bg-white/25 text-white" : "bg-gray-100 text-gray-500"
+        }`}
+      >
+        {jumlah}
+      </span>
+    </button>
+  );
+}
+
 export default function ProdukPage() {
-  const { id, toko, produk, setProduk, kategori, muatUlangProduk } = useToko();
+  const {
+    id,
+    toko,
+    produk,
+    setProduk,
+    kategori,
+    muatUlangProduk,
+    muatUlangKategori,
+  } = useToko();
 
   const supabase = useMemo(() => createClient(), []);
   const toast = useToast();
@@ -137,6 +197,11 @@ export default function ProdukPage() {
   const [grupAwal, setGrupAwal] = useState<GrupInput[]>([]);
   /** Produk yang sedang dimuat grup pilihannya (tombol ubah menampilkan spinner). */
   const [membukaId, setMembukaId] = useState<string | null>(null);
+
+  /** Filter kategori aktif (FILTER_SEMUA, FILTER_TANPA, atau id kategori). */
+  const [filterKategori, setFilterKategori] = useState<string>(FILTER_SEMUA);
+  /** Dialog kelola kategori. */
+  const [kelolaKategori, setKelolaKategori] = useState(false);
 
   /** Berapa kartu yang sedang dirender. Bertambah saat pengguna menggulir ke bawah. */
   const [jumlahTampil, setJumlahTampil] = useState(UKURAN_TAHAP);
@@ -152,18 +217,53 @@ export default function ProdukPage() {
     [kategori]
   );
 
+  /** Jumlah produk per kategori, plus yang tanpa kategori. */
+  const hitungKategori = useMemo(() => {
+    const perKategori = new Map<string, number>();
+    let tanpa = 0;
+    for (const p of produk) {
+      if (p.kategoriId) {
+        perKategori.set(p.kategoriId, (perKategori.get(p.kategoriId) ?? 0) + 1);
+      } else {
+        tanpa++;
+      }
+    }
+    return { perKategori, tanpa };
+  }, [produk]);
+
+  // Jika kategori yang sedang difilter sudah dihapus, kembali ke "Semua"
+  useEffect(() => {
+    if (
+      filterKategori !== FILTER_SEMUA &&
+      filterKategori !== FILTER_TANPA &&
+      !kategori.some((k) => k.id === filterKategori)
+    ) {
+      const timer = window.setTimeout(() => setFilterKategori(FILTER_SEMUA), 0);
+      return () => window.clearTimeout(timer);
+    }
+  }, [kategori, filterKategori]);
+
   // Kolom input tetap responsif; penyaringan daftar mengikuti dengan prioritas lebih rendah
   const kataCari = useDeferredValue(cari);
 
   // Penyaringan dilakukan di memori, jadi hasil pencarian instan tanpa query ke Supabase
   const tampil = useMemo(() => {
     const q = kataCari.trim().toLowerCase();
-    if (!q) return produk;
-    return produk.filter(
-      (p) =>
+    return produk.filter((p) => {
+      if (filterKategori === FILTER_TANPA && p.kategoriId) return false;
+      if (
+        filterKategori !== FILTER_SEMUA &&
+        filterKategori !== FILTER_TANPA &&
+        p.kategoriId !== filterKategori
+      ) {
+        return false;
+      }
+      if (!q) return true;
+      return (
         p.nama.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)
-    );
-  }, [produk, kataCari]);
+      );
+    });
+  }, [produk, kataCari, filterKategori]);
 
   // Hanya sebagian yang dirender agar DOM tetap ringan
   const tampilBertahap = useMemo(
@@ -177,6 +277,12 @@ export default function ProdukPage() {
   const ubahCari = (nilai: string) => {
     setCari(nilai);
     // Pencarian baru dimulai lagi dari tahap pertama
+    setJumlahTampil(UKURAN_TAHAP);
+  };
+
+  /** Ganti filter kategori dan mulai lagi dari tahap pertama. */
+  const pilihFilter = (nilai: string) => {
+    setFilterKategori(nilai);
     setJumlahTampil(UKURAN_TAHAP);
   };
 
@@ -206,9 +312,7 @@ export default function ProdukPage() {
     const ekstensi =
       file.name.split(".").pop()?.toLowerCase().replace(/[^a-z0-9]/g, "") ||
       "jpg";
-    const path = `${id}/products/${Date.now()}-${crypto
-      .randomUUID()
-      .slice(0, 8)}.${ekstensi}`;
+    const path = `${id}/products/${crypto.randomUUID()}.${ekstensi}`;
 
     const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
       contentType: file.type,
@@ -485,6 +589,20 @@ export default function ProdukPage() {
     }
   };
 
+  /**
+   * Menyegarkan daftar kategori setelah ditambah, diubah, atau dihapus.
+   * Produk ikut dimuat ulang jika perlu (misalnya kategori dihapus sehingga
+   * category_id produknya menjadi NULL).
+   */
+  const segarkanKategori = async (muatProduk: boolean) => {
+    try {
+      await muatUlangKategori();
+    } catch (e) {
+      console.error("Kategori tersimpan, tetapi gagal memuat ulang daftar:", e);
+    }
+    if (muatProduk) await segarkan();
+  };
+
   /** Menambah produk. Jika gagal, error dilempar ke FormProduct yang menampilkannya di dialog. */
   const simpanProduk = async (p: InputUbahProduk) => {
     const { data: baru, error } = await supabase
@@ -496,6 +614,12 @@ export default function ProdukPage() {
     if (error || !baru) {
       if (error?.code === "23505") {
         throw new Error("SKU sudah dipakai produk lain di tokomu.");
+      }
+      // BARU (diskon): constraint check di tabel products
+      if (error?.code === "23514") {
+        throw new Error(
+          "Data produk tidak valid. Periksa nilai, tanggal, dan harga pada diskon."
+        );
       }
       throw error ?? new Error("Produk tidak tersimpan.");
     }
@@ -537,6 +661,12 @@ export default function ProdukPage() {
     if (error) {
       if (error.code === "23505") {
         throw new Error("SKU sudah dipakai produk lain di tokomu.");
+      }
+      // BARU (diskon): constraint check di tabel products
+      if (error.code === "23514") {
+        throw new Error(
+          "Data produk tidak valid. Periksa nilai, tanggal, dan harga pada diskon."
+        );
       }
       throw error;
     }
@@ -618,7 +748,7 @@ export default function ProdukPage() {
         </h2>
       </header>
 
-      {/* Pencarian + tambah */}
+      {/* Pencarian + kategori + tambah */}
       <section className="flex gap-2.5">
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
@@ -639,6 +769,17 @@ export default function ProdukPage() {
             </button>
           )}
         </div>
+
+        <button
+          type="button"
+          onClick={() => setKelolaKategori(true)}
+          aria-label="Kelola kategori"
+          className="flex shrink-0 items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3.5 py-2 text-sm font-semibold text-gray-700 shadow-sm transition-colors hover:border-orange-300 hover:text-orange-600"
+        >
+          <Tags className="h-4 w-4" />
+          <span className="hidden sm:inline">Kategori</span>
+        </button>
+
         <button
           onClick={() => setTambah(true)}
           className="flex shrink-0 items-center gap-1.5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-orange-500/25 transition-all hover:shadow-lg hover:shadow-orange-500/30 active:scale-[0.98]"
@@ -648,6 +789,38 @@ export default function ProdukPage() {
           <span className="sm:hidden">Tambah</span>
         </button>
       </section>
+
+      {/* Filter kategori */}
+      {produk.length > 0 && kategori.length > 0 && (
+        <nav
+          aria-label="Filter kategori"
+          className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          <ChipKategori
+            aktif={filterKategori === FILTER_SEMUA}
+            label="Semua"
+            jumlah={produk.length}
+            onClick={() => pilihFilter(FILTER_SEMUA)}
+          />
+          {kategori.map((k) => (
+            <ChipKategori
+              key={k.id}
+              aktif={filterKategori === k.id}
+              label={k.nama}
+              jumlah={hitungKategori.perKategori.get(k.id) ?? 0}
+              onClick={() => pilihFilter(k.id)}
+            />
+          ))}
+          {hitungKategori.tanpa > 0 && (
+            <ChipKategori
+              aktif={filterKategori === FILTER_TANPA}
+              label="Tanpa kategori"
+              jumlah={hitungKategori.tanpa}
+              onClick={() => pilihFilter(FILTER_TANPA)}
+            />
+          )}
+        </nav>
+      )}
 
       {produk.length === 0 ? (
         <section className="flex flex-col items-center gap-4 rounded-3xl border border-gray-100 bg-white px-6 py-16 text-center shadow-sm">
@@ -676,7 +849,9 @@ export default function ProdukPage() {
             <Search className="h-6 w-6" />
           </span>
           <p className="text-sm text-gray-500">
-            Tidak ada produk yang cocok dengan pencarian
+            {filterKategori !== FILTER_SEMUA && !cari.trim()
+              ? "Belum ada produk di kategori ini"
+              : "Tidak ada produk yang cocok dengan pencarian"}
           </p>
         </section>
       ) : (
@@ -713,6 +888,11 @@ export default function ProdukPage() {
             ]
               .filter(Boolean)
               .join(" · ");
+
+            // BARU (diskon)
+            const keadaanDiskon = statusDiskon(p);
+            const diskonAktif = keadaanDiskon === "aktif";
+            const hargaTampil = hargaAkhir(p);
 
             const sedangDibuka = membukaId === p.id;
 
@@ -755,19 +935,48 @@ export default function ProdukPage() {
                       {infoTambahan}
                     </p>
                   )}
-                  <p
-                    className={`mt-0.5 text-base font-extrabold leading-tight ${
-                      p.tersedia ? "text-orange-600" : "text-gray-400"
-                    }`}
-                  >
-                    {rupiah(p.harga)}
+
+                  {/* DIUBAH (diskon): harga akhir + harga coret saat diskon aktif */}
+                  <p className="mt-0.5 flex flex-wrap items-baseline gap-x-2">
+                    <span
+                      className={`text-base font-extrabold leading-tight ${
+                        p.tersedia ? "text-orange-600" : "text-gray-400"
+                      }`}
+                    >
+                      {rupiah(hargaTampil)}
+                    </span>
+                    {diskonAktif && (
+                      <span className="text-xs text-gray-400 line-through">
+                        {rupiah(p.harga)}
+                      </span>
+                    )}
                   </p>
-                  <span
-                    className={`mt-1.5 inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ${warnaBadge}`}
-                  >
-                    <span className={`h-1.5 w-1.5 rounded-full ${warnaTitik}`} />
-                    {labelStok}
-                  </span>
+
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                    <span
+                      className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ${warnaBadge}`}
+                    >
+                      <span className={`h-1.5 w-1.5 rounded-full ${warnaTitik}`} />
+                      {labelStok}
+                    </span>
+
+                    {/* BARU (diskon): badge status diskon */}
+                    {p.diskonJenis && keadaanDiskon === "aktif" && (
+                      <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-600">
+                        Diskon {labelDiskon(p.diskonJenis, p.diskonNilai)}
+                      </span>
+                    )}
+                    {keadaanDiskon === "terjadwal" && (
+                      <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-medium text-violet-600">
+                        Diskon terjadwal
+                      </span>
+                    )}
+                    {keadaanDiskon === "berakhir" && (
+                      <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-500">
+                        Diskon berakhir
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 <div className="flex shrink-0 flex-col items-center gap-2">
@@ -828,6 +1037,17 @@ export default function ProdukPage() {
           onSimpan={simpanPerubahan}
           onPilihGambar={(file) => pilihGambar(file, diubah.id)}
           onHapusGambar={() => hapusGambar(diubah.id)}
+        />
+      )}
+
+      {/* Dialog kelola kategori */}
+      {kelolaKategori && (
+        <KelolaKategori
+          idToko={id}
+          kategori={kategori}
+          jumlahProduk={hitungKategori.perKategori}
+          onTutup={() => setKelolaKategori(false)}
+          onBerubah={segarkanKategori}
         />
       )}
     </div>

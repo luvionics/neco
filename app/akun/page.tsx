@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import {
   AlertCircle,
@@ -194,6 +195,7 @@ function Kerangka() {
 // ---------- Halaman ----------
 
 export default function AkunPage() {
+  const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
 
   const [memuat, setMemuat] = useState(true);
@@ -340,7 +342,7 @@ export default function AkunPage() {
   const keluarAkun = async () => {
     setKeluarProses(true);
     await supabase.auth.signOut();
-    window.location.href = "/";
+    router.replace("/");
   };
 
   const ringkasan = [profil.kota, profil.provinsi].filter(Boolean).join(", ");

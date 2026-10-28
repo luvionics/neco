@@ -65,6 +65,12 @@ export type PesananMasuk = {
   status: StatusPesanan;
 };
 
+/** BARU (diskon): jenis potongan harga. */
+export type JenisDiskon = "persen" | "nominal";
+
+/** BARU (diskon): keadaan diskon sebuah produk pada waktu tertentu. */
+export type StatusDiskon = "tidak-ada" | "terjadwal" | "aktif" | "berakhir";
+
 export type Produk = {
   id: string; // uuid dari tabel products
   nama: string;
@@ -76,6 +82,11 @@ export type Produk = {
   tersedia: boolean; // is_available
   nonStok: boolean; // turunan dari track_stock: true jika track_stock = false
   gambarUrl: string | null; // image_url
+  // BARU (diskon)
+  diskonJenis: JenisDiskon | null; // discount_type: percent -> persen, amount -> nominal
+  diskonNilai: number; // discount_value, 0 jika tidak ada diskon
+  diskonMulai: string | null; // discount_starts_at (ISO)
+  diskonSelesai: string | null; // discount_ends_at (ISO)
 };
 
 /** Data yang dikirim form saat menambah produk. */
@@ -92,8 +103,9 @@ export const urlHalamanToko = (id: string) => `/toko/${id}`;
 
 type JamBuka = { open: string; close: string } | null;
 
+// DIUBAH (diskon): ditambah 4 kolom diskon
 const KOLOM_PRODUK =
-  "id, name, description, sku, category_id, price, stock, is_available, track_stock, image_url";
+  "id, name, description, sku, category_id, price, stock, is_available, track_stock, image_url, discount_type, discount_value, discount_starts_at, discount_ends_at";
 
 function statusDariDb(status: unknown): StatusToko {
   switch (status) {
@@ -147,6 +159,15 @@ function detailTokoDariDb(row: Record<string, unknown>): DetailToko {
 
 function produkDariDb(row: Record<string, unknown>): Produk {
   const teks = (value: unknown) => (typeof value === "string" ? value : "");
+
+  // BARU (diskon)
+  const diskonJenis: JenisDiskon | null =
+    row.discount_type === "percent"
+      ? "persen"
+      : row.discount_type === "amount"
+      ? "nominal"
+      : null;
+
   return {
     id: String(row.id),
     nama: teks(row.name),
@@ -160,6 +181,25 @@ function produkDariDb(row: Record<string, unknown>): Produk {
     // produk tanpa stok = stok tidak dilacak
     nonStok: row.track_stock !== true,
     gambarUrl: typeof row.image_url === "string" ? row.image_url : null,
+    // BARU (diskon)
+    diskonJenis,
+    diskonNilai: diskonJenis ? Number(row.discount_value) || 0 : 0,
+    diskonMulai:
+      diskonJenis && typeof row.discount_starts_at === "string"
+        ? row.discount_starts_at
+        : null,
+    diskonSelesai:
+      diskonJenis && typeof row.discount_ends_at === "string"
+        ? row.discount_ends_at
+        : null,
+  };
+}
+
+/** BARU: baris tabel product_categories menjadi Kategori. */
+function kategoriDariDb(row: Record<string, unknown>): Kategori {
+  return {
+    id: String(row.id),
+    nama: typeof row.name === "string" ? row.name : "",
   };
 }
 
@@ -207,6 +247,48 @@ export const subtotal = (p: PesananMasuk) =>
 
 export const totalPesanan = (p: PesananMasuk) => subtotal(p) + p.ongkir;
 
+// ---------- BARU (diskon): hitungan harga ----------
+
+/**
+ * Harga setelah dipotong diskon, tanpa memperhatikan masa berlaku.
+ * Hitungannya sama dengan fungsi SQL public.product_final_price.
+ */
+export function hargaSetelahDiskon(
+  harga: number,
+  jenis: JenisDiskon | null,
+  nilai: number
+): number {
+  if (!jenis || nilai <= 0) return harga;
+  if (jenis === "persen") {
+    return Math.max(0, Math.round((harga * (100 - nilai)) / 100));
+  }
+  return Math.max(0, harga - nilai);
+}
+
+/** Keadaan diskon produk pada waktu `sekarang`. */
+export function statusDiskon(
+  p: Pick<Produk, "diskonJenis" | "diskonMulai" | "diskonSelesai">,
+  sekarang: Date = new Date()
+): StatusDiskon {
+  if (!p.diskonJenis || !p.diskonMulai || !p.diskonSelesai) return "tidak-ada";
+  const t = sekarang.getTime();
+  if (t < new Date(p.diskonMulai).getTime()) return "terjadwal";
+  if (t >= new Date(p.diskonSelesai).getTime()) return "berakhir";
+  return "aktif";
+}
+
+/** Harga yang berlaku sekarang: harga diskon jika diskon sedang aktif, selain itu harga normal. */
+export function hargaAkhir(p: Produk, sekarang: Date = new Date()): number {
+  return statusDiskon(p, sekarang) === "aktif"
+    ? hargaSetelahDiskon(p.harga, p.diskonJenis, p.diskonNilai)
+    : p.harga;
+}
+
+/** Teks singkat besar diskon, mis. "10%" atau "Rp 5.000". */
+export function labelDiskon(jenis: JenisDiskon, nilai: number): string {
+  return jenis === "persen" ? `${nilai}%` : rupiah(nilai);
+}
+
 // ---------- Context ----------
 
 type NilaiToko = {
@@ -227,6 +309,8 @@ type NilaiToko = {
   ubahStatus: (pesananId: string, status: StatusPesanan) => void;
   /** Memuat ulang daftar produk dari database. Melempar error jika gagal. */
   muatUlangProduk: () => Promise<void>;
+  /** Memuat ulang daftar kategori dari database. Melempar error jika gagal. */
+  muatUlangKategori: () => Promise<void>;
 };
 
 const TokoContext = createContext<NilaiToko | null>(null);
@@ -285,6 +369,19 @@ export function TokoProvider({ children }: { children: ReactNode }) {
     return (data ?? []).map(produkDariDb);
   }, [supabase, id]);
 
+  /** Mengambil kategori aktif milik toko dari tabel product_categories. */
+  const ambilKategori = useCallback(async (): Promise<Kategori[]> => {
+    const { data, error } = await supabase
+      .from("product_categories")
+      .select("id, name")
+      .eq("shop_id", id)
+      .eq("is_active", true)
+      .order("sort_order", { ascending: true })
+      .order("name", { ascending: true });
+    if (error) throw error;
+    return (data ?? []).map(kategoriDariDb);
+  }, [supabase, id]);
+
   useEffect(() => {
     let batal = false;
 
@@ -325,7 +422,6 @@ export function TokoProvider({ children }: { children: ReactNode }) {
             "id, name, village, address_line, status, is_open, is_verified, opening_hours, delivery_enabled, pickup_enabled, dine_in_enabled, pos_enabled"
           )
           .eq("id", id)
-          .eq("owner_id", user.id)
           .maybeSingle();
 
         if (batal) return;
@@ -341,24 +437,18 @@ export function TokoProvider({ children }: { children: ReactNode }) {
 
         // Muat kategori milik toko ini. Gagal memuat kategori tidak boleh
         // menggagalkan halaman, dropdown kategori akan disembunyikan saja.
-        const { data: dataKategori } = await supabase
-          .from("categories")
-          .select("id, name")
-          .eq("shop_id", id)
-          .eq("is_active", true)
-          .order("sort_order", { ascending: true })
-          .order("name", { ascending: true });
+        let daftarKategori: Kategori[] = [];
+        try {
+          daftarKategori = await ambilKategori();
+        } catch (e) {
+          console.error("Gagal memuat kategori produk:", e);
+        }
 
         if (batal) return;
 
         setToko(detailTokoDariDb(data));
         setProduk(daftarProduk);
-        setKategori(
-          (dataKategori ?? []).map((k) => ({
-            id: String(k.id),
-            nama: typeof k.name === "string" ? k.name : "",
-          }))
-        );
+        setKategori(daftarKategori);
         setStatusMuat("ready");
       } catch (error) {
         if (batal) return;
@@ -375,7 +465,7 @@ export function TokoProvider({ children }: { children: ReactNode }) {
     return () => {
       batal = true;
     };
-  }, [id, cobaLagi, supabase, ambilProduk]);
+  }, [id, cobaLagi, supabase, ambilProduk, ambilKategori]);
 
   const perbaruiToko = useCallback((patch: Partial<DetailToko>) => {
     // Hanya memperbarui tampilan. Penyimpanan ke database dilakukan oleh halaman pengaturan.
@@ -395,6 +485,10 @@ export function TokoProvider({ children }: { children: ReactNode }) {
   const muatUlangProduk = useCallback(async () => {
     setProduk(await ambilProduk());
   }, [ambilProduk]);
+
+  const muatUlangKategori = useCallback(async () => {
+    setKategori(await ambilKategori());
+  }, [ambilKategori]);
 
   const jumlahBaru = useMemo(() => {
     const hitung = (j: JenisPesanan) =>
@@ -464,6 +558,7 @@ export function TokoProvider({ children }: { children: ReactNode }) {
         ubahBukaSekarang,
         ubahStatus,
         muatUlangProduk,
+        muatUlangKategori,
       }}
     >
       {children}

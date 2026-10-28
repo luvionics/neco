@@ -1,7 +1,8 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ToastProvider } from "@/components/toast";
 import { ModalProvider } from "@/components/modal";
+import PwaRegister from "@/components/pwa-register";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -27,6 +28,22 @@ export const metadata: Metadata = {
     "Pesan Antar",
     "Aplikasi Kasir",
   ],
+  applicationName: "NECOKU",
+  appleWebApp: {
+    capable: true,
+    title: "NECOKU",
+    statusBarStyle: "default",
+  },
+  formatDetection: {
+    telephone: false,
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#ff6a00",
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -43,6 +60,7 @@ export default function RootLayout({
         <ToastProvider>
           <ModalProvider>{children}</ModalProvider>
         </ToastProvider>
+        <PwaRegister />
       </body>
     </html>
   );

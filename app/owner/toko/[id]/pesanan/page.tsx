@@ -335,7 +335,8 @@ function IsiPesanan() {
   );
 
   useEffect(() => {
-    muat();
+    const timer = window.setTimeout(() => void muat(), 0);
+    return () => window.clearTimeout(timer);
   }, [muat]);
 
   // Pesanan baru atau perubahan status langsung muncul (butuh Realtime aktif untuk tabel orders)
@@ -361,14 +362,8 @@ function IsiPesanan() {
     return hasil;
   }, [orders]);
 
-  const daftarJenis = useMemo(
-    () => (jenis ? orders.filter((p) => p.tipe === jenis) : []),
-    [orders, jenis]
-  );
-  const tampil = useMemo(
-    () => daftarJenis.filter((p) => cocokFilter(p, filter)),
-    [daftarJenis, filter]
-  );
+  const daftarJenis = jenis ? orders.filter((p) => p.tipe === jenis) : [];
+  const tampil = daftarJenis.filter((p) => cocokFilter(p, filter));
 
   const ubahStatus = async (p: Pesanan, ke: StatusDb, catatan?: string) => {
     if (sibuk) return;

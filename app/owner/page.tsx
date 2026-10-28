@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import {
   AlertCircle,
   ArrowLeft,
@@ -316,13 +317,13 @@ export default function TokoSayaPage() {
       {/* HEADER */}
       <header className="sticky top-0 z-30 border-b border-gray-100 bg-white">
         <div className="mx-auto flex max-w-5xl items-center gap-3 px-3 py-2.5 md:px-4">
-          <a
+          <Link
             href="/"
             aria-label="Kembali ke halaman belanja"
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-700 transition-colors hover:bg-gray-200"
           >
             <ArrowLeft className="h-5 w-5" />
-          </a>
+          </Link>
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-orange-50 to-amber-50 p-1.5 ring-1 ring-orange-100">
             <Image
               src="/logo.png"

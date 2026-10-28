@@ -153,7 +153,8 @@ export default function MejaPage() {
 
   // Alamat situs, dipakai sebagai isi kode QR
   useEffect(() => {
-    setOrigin(window.location.origin);
+    const timer = window.setTimeout(() => setOrigin(window.location.origin), 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   const muat = useCallback(async () => {
@@ -182,7 +183,8 @@ export default function MejaPage() {
   }, [supabase, id]);
 
   useEffect(() => {
-    muat();
+    const timer = window.setTimeout(() => void muat(), 0);
+    return () => window.clearTimeout(timer);
   }, [muat]);
 
   // Cetak: tampilkan area cetak, tunggu logo selesai dimuat,

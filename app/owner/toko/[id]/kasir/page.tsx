@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   ArrowRight,
@@ -16,6 +16,7 @@ import {
   Search,
   Settings2,
   ShoppingCart,
+  Tag,
   Trash2,
   X,
 } from "lucide-react";
@@ -26,17 +27,30 @@ import { Dialog } from "../ui";
 // ---------- Tipe & konstanta ----------
 
 type Metode = "cash" | "qris" | "transfer";
-type Baris = { produk: Produk; qty: number };
+
+/** Produk + field diskon (diisi dari kolom discount_* di toko-context). */
+type ProdukKasir = Produk & {
+  diskonTipe?: string | null;
+  diskonNilai?: number | null;
+  diskonMulai?: string | null;
+  diskonSelesai?: string | null;
+};
+
+/** harga = harga satuan setelah diskon, potong = potongan per satuan. */
+type Baris = { produk: ProdukKasir; qty: number; harga: number; potong: number };
+
 type DataBayar = {
   metode: Metode;
   diterima: number;
   nama: string;
   catatan: string;
+  referensi: string;
 };
 type Struk = {
   kode: string;
   baris: Baris[];
   total: number;
+  hemat: number;
   metode: Metode;
   diterima: number;
   kembalian: number;
@@ -68,11 +82,33 @@ const TOMBOL_UTAMA =
 /** Jumlah maksimal yang boleh dimasukkan ke keranjang. */
 const maksQty = (p: Produk) => (p.nonStok ? MAKS_NON_STOK : p.stok);
 
+/**
+ * Potongan per satuan jika diskon sedang aktif.
+ * Harus sama dengan perhitungan di fungsi database (server tetap penentu akhir).
+ */
+function diskonSatuan(p: ProdukKasir, sekarang = Date.now()): number {
+  const nilai = Number(p.diskonNilai ?? 0);
+  if (!p.diskonTipe || !(nilai > 0)) return 0;
+  if (p.diskonMulai && new Date(p.diskonMulai).getTime() > sekarang) return 0;
+  if (p.diskonSelesai && new Date(p.diskonSelesai).getTime() < sekarang)
+    return 0;
+  const potong =
+    p.diskonTipe === "percent" ? Math.round((p.harga * nilai) / 100) : nilai;
+  return Math.min(Math.max(potong, 0), p.harga);
+}
+
+/** Label singkat untuk lencana diskon, mis. "-20%" atau "-Rp 5.000". */
+function labelDiskon(p: ProdukKasir): string {
+  const nilai = Number(p.diskonNilai ?? 0);
+  return p.diskonTipe === "percent" ? `-${nilai}%` : `-${rupiah(nilai)}`;
+}
+
 // ---------- Panel keranjang (dipakai di desktop & sheet mobile) ----------
 
 function PanelKeranjang({
   baris,
   total,
+  hemat,
   jumlahItem,
   onUbah,
   onHapus,
@@ -82,6 +118,7 @@ function PanelKeranjang({
 }: {
   baris: Baris[];
   total: number;
+  hemat: number;
   jumlahItem: number;
   onUbah: (id: string, delta: number) => void;
   onHapus: (id: string) => void;
@@ -130,15 +167,22 @@ function PanelKeranjang({
         </div>
       ) : (
         <ul className="flex-1 divide-y divide-gray-100 overflow-y-auto px-4">
-          {baris.map(({ produk: p, qty }) => (
+          {baris.map(({ produk: p, qty, harga, potong }) => (
             <li key={p.id} className="flex items-center gap-3 py-3">
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold text-gray-900">
                   {p.nama}
                 </p>
-                <p className="text-xs text-gray-500">{rupiah(p.harga)}</p>
+                <p className="text-xs text-gray-500">
+                  {potong > 0 && (
+                    <span className="mr-1.5 text-gray-400 line-through">
+                      {rupiah(p.harga)}
+                    </span>
+                  )}
+                  {rupiah(harga)}
+                </p>
                 <p className="mt-0.5 text-sm font-bold text-orange-600">
-                  {rupiah(p.harga * qty)}
+                  {rupiah(harga * qty)}
                 </p>
               </div>
               <div className="flex items-center gap-1.5">
@@ -177,6 +221,17 @@ function PanelKeranjang({
       )}
 
       <div className="space-y-3 border-t border-gray-100 p-4">
+        {hemat > 0 && (
+          <div className="flex items-center justify-between text-sm">
+            <span className="flex items-center gap-1.5 text-emerald-600">
+              <Tag className="h-3.5 w-3.5" />
+              Hemat
+            </span>
+            <span className="font-semibold text-emerald-600">
+              -{rupiah(hemat)}
+            </span>
+          </div>
+        )}
         <div className="flex items-center justify-between">
           <span className="text-sm text-gray-500">Total</span>
           <span className="text-xl font-extrabold text-gray-900">
@@ -201,17 +256,20 @@ function PanelKeranjang({
 
 function DialogBayar({
   total,
+  hemat,
   jumlahItem,
   onTutup,
   onBayar,
 }: {
   total: number;
+  hemat: number;
   jumlahItem: number;
   onTutup: () => void;
   onBayar: (data: DataBayar) => Promise<void>;
 }) {
   const [metode, setMetode] = useState<Metode>("cash");
   const [diterima, setDiterima] = useState("");
+  const [referensi, setReferensi] = useState("");
   const [nama, setNama] = useState("");
   const [catatan, setCatatan] = useState("");
   const [proses, setProses] = useState(false);
@@ -246,6 +304,7 @@ function DialogBayar({
         diterima: metode === "cash" ? uang : total,
         nama: nama.trim(),
         catatan: catatan.trim(),
+        referensi: metode === "cash" ? "" : referensi.trim(),
       });
     } catch (e) {
       setGalat(e instanceof Error ? e.message : "Gagal memproses transaksi.");
@@ -272,6 +331,11 @@ function DialogBayar({
         <p className="text-3xl font-extrabold text-orange-600">
           {rupiah(total)}
         </p>
+        {hemat > 0 && (
+          <p className="mt-0.5 text-xs font-medium text-emerald-600">
+            Sudah hemat {rupiah(hemat)}
+          </p>
+        )}
       </div>
 
       {/* Metode */}
@@ -353,11 +417,30 @@ function DialogBayar({
         </div>
       )}
 
+      {/* Referensi (non-tunai) */}
       {metode !== "cash" && (
-        <p className="rounded-xl bg-gray-50 px-3.5 py-2.5 text-xs text-gray-500">
-          Pastikan pembayaran {METODE[metode].label} sudah masuk sebelum
-          menekan tombol konfirmasi.
-        </p>
+        <div className="space-y-2">
+          <p className="rounded-xl bg-gray-50 px-3.5 py-2.5 text-xs text-gray-500">
+            Pastikan pembayaran {METODE[metode].label} sudah masuk sebelum
+            menekan tombol konfirmasi.
+          </p>
+          <div className="space-y-1.5">
+            <label
+              htmlFor="k-referensi"
+              className="block text-sm font-medium text-gray-700"
+            >
+              No. referensi{" "}
+              <span className="font-normal text-gray-400">(opsional)</span>
+            </label>
+            <input
+              id="k-referensi"
+              value={referensi}
+              onChange={(e) => setReferensi(e.target.value)}
+              placeholder="Contoh: kode transaksi dari bukti bayar"
+              className={INPUT}
+            />
+          </div>
+        </div>
       )}
 
       {/* Opsional */}
@@ -447,22 +530,35 @@ function DialogStruk({
       </div>
 
       <ul className="max-h-48 divide-y divide-gray-100 overflow-y-auto rounded-xl border border-gray-100 px-3.5">
-        {struk.baris.map(({ produk: p, qty }) => (
+        {struk.baris.map(({ produk: p, qty, harga, potong }) => (
           <li
             key={p.id}
             className="flex items-center justify-between gap-3 py-2 text-sm"
           >
             <span className="min-w-0 truncate text-gray-700">
               {qty} × {p.nama}
+              {potong > 0 && (
+                <span className="ml-1.5 text-xs text-emerald-600">
+                  (diskon)
+                </span>
+              )}
             </span>
             <span className="shrink-0 font-medium text-gray-900">
-              {rupiah(p.harga * qty)}
+              {rupiah(harga * qty)}
             </span>
           </li>
         ))}
       </ul>
 
       <dl className="space-y-1.5 text-sm">
+        {struk.hemat > 0 && (
+          <div className="flex justify-between">
+            <dt className="text-gray-500">Hemat</dt>
+            <dd className="font-medium text-emerald-600">
+              -{rupiah(struk.hemat)}
+            </dd>
+          </div>
+        )}
         <div className="flex justify-between">
           <dt className="text-gray-500">Total</dt>
           <dd className="font-bold text-gray-900">{rupiah(struk.total)}</dd>
@@ -510,9 +606,23 @@ function KasirAktif() {
   const [panelBuka, setPanelBuka] = useState(false);
   const [bayarBuka, setBayarBuka] = useState(false);
   const [struk, setStruk] = useState<Struk | null>(null);
+  const [sekarang, setSekarang] = useState(0);
+
+  useEffect(() => {
+    const pembaru = () => setSekarang(Date.now());
+    const pemuatan = window.setTimeout(pembaru, 0);
+    const timer = window.setInterval(pembaru, 60000);
+    return () => {
+      window.clearTimeout(pemuatan);
+      window.clearInterval(timer);
+    };
+  }, []);
 
   // Hanya produk yang ditampilkan ke pembeli yang bisa dijual
-  const dijual = useMemo(() => produk.filter((p) => p.tersedia), [produk]);
+  const dijual = useMemo(
+    () => (produk as ProdukKasir[]).filter((p) => p.tersedia),
+    [produk]
+  );
 
   const kategoriAda = useMemo(
     () => kategori.filter((k) => dijual.some((p) => p.kategoriId === k.id)),
@@ -533,14 +643,17 @@ function KasirAktif() {
   }, [dijual, cari, kategoriAktif]);
 
   const baris: Baris[] = useMemo(() => {
-    const peta = new Map(produk.map((p) => [p.id, p]));
+    const peta = new Map((produk as ProdukKasir[]).map((p) => [p.id, p]));
     return Object.entries(keranjang).flatMap(([pid, qty]) => {
       const p = peta.get(pid);
-      return p ? [{ produk: p, qty }] : [];
+      if (!p) return [];
+      const potong = diskonSatuan(p, sekarang);
+      return [{ produk: p, qty, harga: p.harga - potong, potong }];
     });
-  }, [keranjang, produk]);
+  }, [keranjang, produk, sekarang]);
 
-  const total = baris.reduce((n, b) => n + b.produk.harga * b.qty, 0);
+  const total = baris.reduce((n, b) => n + b.harga * b.qty, 0);
+  const hemat = baris.reduce((n, b) => n + b.potong * b.qty, 0);
   const jumlahItem = baris.reduce((n, b) => n + b.qty, 0);
 
   const tambah = (p: Produk) => {
@@ -557,8 +670,7 @@ function KasirAktif() {
     setKeranjang((k) => {
       const baru = (k[pid] ?? 0) + delta;
       if (baru <= 0) {
-        const { [pid]: _hapus, ...sisa } = k;
-        return sisa;
+        return Object.fromEntries(Object.entries(k).filter(([id]) => id !== pid));
       }
       if (baru > maksQty(p)) return k;
       return { ...k, [pid]: baru };
@@ -566,10 +678,9 @@ function KasirAktif() {
   };
 
   const hapus = (pid: string) =>
-    setKeranjang((k) => {
-      const { [pid]: _hapus, ...sisa } = k;
-      return sisa;
-    });
+    setKeranjang((k) =>
+      Object.fromEntries(Object.entries(k).filter(([id]) => id !== pid))
+    );
 
   const bukaBayar = () => {
     setPanelBuka(false);
@@ -584,14 +695,17 @@ function KasirAktif() {
       p_amount_paid: d.diterima,
       p_customer_name: d.nama || null,
       p_notes: d.catatan || null,
+      p_reference: d.referensi || null,
     });
     if (error) throw new Error(error.message);
 
+    // Total & kembalian memakai hasil server (sumber kebenaran)
     const hasil = data as HasilTransaksi;
     setStruk({
       kode: hasil.order_number,
       baris,
       total: Number(hasil.total),
+      hemat,
       metode: d.metode,
       diterima: d.diterima,
       kembalian: Number(hasil.change),
@@ -689,6 +803,7 @@ function KasirAktif() {
                 const habis = !p.nonStok && p.stok <= 0;
                 const menipis = !p.nonStok && !habis && p.stok <= BATAS_STOK;
                 const qty = keranjang[p.id] ?? 0;
+                const potong = diskonSatuan(p);
                 return (
                   <li key={p.id}>
                     <button
@@ -724,6 +839,12 @@ function KasirAktif() {
                           </span>
                         )}
                       </div>
+                      {potong > 0 && !habis && (
+                        <span className="absolute left-2 top-2 flex items-center gap-1 rounded-full bg-emerald-500 px-2 py-0.5 text-[11px] font-bold text-white shadow">
+                          <Tag className="h-3 w-3" />
+                          {labelDiskon(p)}
+                        </span>
+                      )}
                       {qty > 0 && (
                         <span className="absolute right-2 top-2 flex h-6 min-w-6 items-center justify-center rounded-full bg-orange-500 px-1.5 text-xs font-bold text-white shadow">
                           {qty}
@@ -734,7 +855,12 @@ function KasirAktif() {
                           {p.nama}
                         </p>
                         <p className="text-sm font-extrabold text-orange-600">
-                          {rupiah(p.harga)}
+                          {rupiah(p.harga - potong)}
+                          {potong > 0 && (
+                            <span className="ml-1.5 text-xs font-medium text-gray-400 line-through">
+                              {rupiah(p.harga)}
+                            </span>
+                          )}
                         </p>
                         <p
                           className={`text-[11px] font-medium ${
@@ -766,6 +892,7 @@ function KasirAktif() {
             <PanelKeranjang
               baris={baris}
               total={total}
+              hemat={hemat}
               jumlahItem={jumlahItem}
               onUbah={ubahQty}
               onHapus={hapus}
@@ -815,6 +942,7 @@ function KasirAktif() {
             <PanelKeranjang
               baris={baris}
               total={total}
+              hemat={hemat}
               jumlahItem={jumlahItem}
               onUbah={ubahQty}
               onHapus={hapus}
@@ -829,6 +957,7 @@ function KasirAktif() {
       {bayarBuka && (
         <DialogBayar
           total={total}
+          hemat={hemat}
           jumlahItem={jumlahItem}
           onTutup={() => setBayarBuka(false)}
           onBayar={prosesBayar}

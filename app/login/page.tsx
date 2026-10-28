@@ -3,6 +3,8 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import Image from "next/image";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   AlertCircle,
   CheckCircle2,
@@ -40,6 +42,7 @@ function terjemahkan(pesan: string) {
 }
 
 export default function LoginPage() {
+  const router = useRouter();
   const [mode, setMode] = useState<Mode>("masuk");
   const [nama, setNama] = useState("");
   const [email, setEmail] = useState("");
@@ -51,12 +54,15 @@ export default function LoginPage() {
 
   // Galat dari link konfirmasi email (lihat app/auth/callback/route.ts)
   useEffect(() => {
-    const galatUrl = new URLSearchParams(window.location.search).get("galat");
-    if (galatUrl === "konfirmasi") {
-      setGalat(
-        "Link konfirmasi tidak valid atau sudah kedaluwarsa. Coba masuk atau daftar lagi"
-      );
-    }
+    const timer = window.setTimeout(() => {
+      const galatUrl = new URLSearchParams(window.location.search).get("galat");
+      if (galatUrl === "konfirmasi") {
+        setGalat(
+          "Link konfirmasi tidak valid atau sudah kedaluwarsa. Coba masuk atau daftar lagi"
+        );
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   const ganti = (m: Mode) => {
@@ -94,7 +100,7 @@ export default function LoginPage() {
           password: sandi,
         });
         if (error) throw error;
-        window.location.assign("/");
+        router.replace("/");
         return;
       }
 
@@ -110,7 +116,7 @@ export default function LoginPage() {
 
       // Konfirmasi email dimatikan: langsung login
       if (data.session) {
-        window.location.assign("/");
+        router.replace("/");
         return;
       }
 
@@ -138,7 +144,7 @@ export default function LoginPage() {
 
       <div className="relative z-10 w-full max-w-md">
         {/* Logo */}
-        <a
+        <Link
           href="/"
           className="mb-6 flex flex-col items-center gap-2 text-center text-white"
         >
@@ -157,7 +163,7 @@ export default function LoginPage() {
           <span className="text-sm text-white/90">
             Belanja dari toko tetanggamu
           </span>
-        </a>
+        </Link>
 
         {/* Kartu */}
         <div className="space-y-5 rounded-3xl bg-white p-6 shadow-2xl shadow-black/15 md:p-8">
@@ -306,12 +312,12 @@ export default function LoginPage() {
         </div>
 
         <p className="mt-6 text-center text-sm">
-          <a
+          <Link
             href="/"
             className="text-white/90 transition-colors hover:text-white"
           >
             ← Kembali ke beranda
-          </a>
+          </Link>
         </p>
       </div>
     </div>

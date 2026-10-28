@@ -2,6 +2,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import Header from "@/app/components/Header";
 import { NavBawah } from "@/app/components/Navbar";
 import {
@@ -249,12 +250,12 @@ export default function PesananPage() {
                 Pesanan dari toko sekitarmu akan muncul di halaman ini.
               </p>
             </div>
-            <a
+            <Link
               href="/"
               className={`rounded-xl px-5 py-2.5 text-sm font-semibold ${TOMBOL_UTAMA}`}
             >
               Cari toko terdekat
-            </a>
+            </Link>
           </div>
         ) : (
           hasil.map((p) => {

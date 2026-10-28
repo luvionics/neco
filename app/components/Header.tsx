@@ -2,6 +2,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import type { ReactNode } from "react";
 import {
   NavDesktop,
@@ -39,7 +40,7 @@ export default function Header({
         <div className="mx-auto max-w-6xl px-3 py-3 md:px-4">
           <div className="flex items-center gap-3 md:gap-6">
             {/* Logo */}
-            <a href="/" className="flex shrink-0 items-center gap-2 text-white">
+            <Link href="/" className="flex shrink-0 items-center gap-2 text-white">
               <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white p-1 shadow-sm md:h-10 md:w-10">
                 <Image
                   src="/logo.png"
@@ -52,7 +53,7 @@ export default function Header({
               <span className="hidden text-2xl font-extrabold tracking-widest md:inline">
                 Necoku
               </span>
-            </a>
+            </Link>
 
             {children}
 
