@@ -13,10 +13,10 @@ import {
 import {
   hargaSetelahDiskon, // BARU (diskon)
   rupiah, // BARU (diskon)
-  useToko,
   type InputProduk,
   type Produk,
-} from "../../components/toko-context";
+  type Kategori,
+} from "../../components/toko";
 import { Saklar } from "../../ui";
 import KelolaKategori from "./kelola-kategori";
 
@@ -53,6 +53,11 @@ type Galat = Partial<
 >;
 
 type Props = {
+  idToko: string;
+  kategori: Kategori[];
+  daftarProduk: Produk[];
+  muatUlangKategori: () => Promise<void>;
+  muatUlangProduk: () => Promise<void>;
   /** Jika diisi, form dalam mode ubah dan terisi data produk ini. */
   produk?: Produk;
   /** Mode ubah: grup pilihan produk yang sudah tersimpan (sudah dimuat induk). */
@@ -586,6 +591,11 @@ function BagianPilihan({
 }
 
 export default function FormProduct({
+  idToko,
+  kategori,
+  daftarProduk,
+  muatUlangKategori,
+  muatUlangProduk,
   produk,
   grupAwal,
   onTutup,
@@ -593,13 +603,6 @@ export default function FormProduct({
   onPilihGambar,
   onHapusGambar,
 }: Props) {
-  const {
-    id: idToko,
-    kategori,
-    produk: daftarProduk,
-    muatUlangKategori,
-    muatUlangProduk,
-  } = useToko();
   const modeUbah = Boolean(produk);
   const idJudul = useId();
 

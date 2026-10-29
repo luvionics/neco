@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { AlertCircle, Clock, Loader2, Save, type LucideIcon } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/toast";
-import { useToko } from "../../components/toko-context";
+import { useToko } from "../../components/toko-provider";
 import { Saklar } from "../../ui";
 
 // ---------- Konstanta & tipe ----------

@@ -21,14 +21,15 @@ import {
   X,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { rupiah, useToko, type Produk } from "../components/toko-context";
+import { useToko } from "../components/toko-provider";
+import { rupiah, useProdukToko, type Produk } from "../components/toko";
 import { Dialog } from "../ui";
 
 // ---------- Tipe & konstanta ----------
 
 type Metode = "cash" | "qris" | "transfer";
 
-/** Produk + field diskon (diisi dari kolom discount_* di toko-context). */
+/** Produk beserta data diskonnya. */
 type ProdukKasir = Produk & {
   diskonTipe?: string | null;
   diskonNilai?: number | null;
@@ -597,7 +598,8 @@ function DialogStruk({
 // ---------- Kasir aktif ----------
 
 function KasirAktif() {
-  const { id, base, produk, kategori, toko, muatUlangProduk } = useToko();
+  const { id, base, toko } = useToko();
+  const { produk, kategori, muatUlangProduk } = useProdukToko(id);
   const supabase = useMemo(() => createClient(), []);
 
   const [cari, setCari] = useState("");

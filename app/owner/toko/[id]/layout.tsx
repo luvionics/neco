@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { AlertCircle } from "lucide-react";
 import Navbar from "./components/navbar";
-import { TokoProvider, useToko } from "./components/toko-context";
+import { TokoProvider, useToko } from "./components/toko-provider";
 
 function Cangkang({ children }: { children: ReactNode }) {
   const { toko, base } = useToko();

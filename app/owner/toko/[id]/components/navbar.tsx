@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -13,8 +14,50 @@ import {
   Receipt,
   Settings,
 } from "lucide-react";
-import { STATUS_TOKO, urlHalamanToko, useToko } from "./toko-context";
+import { STATUS_TOKO, useToko } from "./toko-provider";
+import { urlHalamanToko } from "./toko";
 import { usePesananAktifToko } from "./usePesananAktifToko";
+
+// Logo toko bila ada, kalau tidak (atau gagal dimuat) pakai logo Necoku
+function LogoToko({
+  logo,
+  nama,
+  kelas,
+}: {
+  logo?: string;
+  nama: string;
+  kelas: string;
+}) {
+  const [gagal, setGagal] = useState(false);
+
+  useEffect(() => {
+    setGagal(false);
+  }, [logo]);
+
+  return (
+    <span
+      className={`flex shrink-0 items-center justify-center overflow-hidden bg-gradient-to-br from-orange-50 to-amber-50 ring-1 ring-orange-100 ${kelas}`}
+    >
+      {logo && !gagal ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={logo}
+          alt={`Logo ${nama}`}
+          className="h-full w-full object-cover"
+          onError={() => setGagal(true)}
+        />
+      ) : (
+        <Image
+          src="/logo.png"
+          alt="Necoku"
+          width={40}
+          height={40}
+          className="h-full w-full object-contain p-1.5"
+        />
+      )}
+    </span>
+  );
+}
 
 export default function Navbar() {
   const { id, base, toko } = useToko();
@@ -24,6 +67,7 @@ export default function Navbar() {
 
   const aktif = toko.status === "aktif";
   const infoStatus = STATUS_TOKO[toko.status];
+  const kategori = toko.kategori || "Tanpa kategori";
 
   // Menu Pesanan hanya ada jika minimal satu layanan pembeli diaktifkan
   const adaPesanan = toko.antar || toko.ambil || toko.meja;
@@ -101,15 +145,11 @@ export default function Navbar() {
           </Link>
 
           <div className="flex items-center gap-3">
-            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-50 to-amber-50 p-2 ring-1 ring-orange-100">
-              <Image
-                src="/logo.png"
-                alt="Necoku"
-                width={40}
-                height={40}
-                className="h-full w-full object-contain"
-              />
-            </span>
+            <LogoToko
+              logo={toko.logo}
+              nama={toko.nama}
+              kelas="h-12 w-12 rounded-2xl"
+            />
             <div className="min-w-0">
               <div className="flex items-center gap-1">
                 <h1 className="truncate text-sm font-bold leading-tight text-gray-900">
@@ -119,7 +159,7 @@ export default function Navbar() {
                   <BadgeCheck className="h-4 w-4 shrink-0 text-sky-500" />
                 )}
               </div>
-              <p className="truncate text-xs text-gray-500">{toko.kategori}</p>
+              <p className="truncate text-xs text-gray-500">{kategori}</p>
             </div>
           </div>
 
@@ -189,15 +229,11 @@ export default function Navbar() {
           >
             <ArrowLeft className="h-5 w-5" />
           </Link>
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-orange-50 to-amber-50 p-1.5 ring-1 ring-orange-100">
-            <Image
-              src="/logo.png"
-              alt="Necoku"
-              width={40}
-              height={40}
-              className="h-full w-full object-contain"
-            />
-          </span>
+          <LogoToko
+            logo={toko.logo}
+            nama={toko.nama}
+            kelas="h-10 w-10 rounded-xl"
+          />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1">
               <h1 className="truncate text-sm font-bold leading-tight text-gray-900">
@@ -207,7 +243,7 @@ export default function Navbar() {
                 <BadgeCheck className="h-4 w-4 shrink-0 text-sky-500" />
               )}
             </div>
-            <p className="truncate text-xs text-gray-500">{toko.kategori}</p>
+            <p className="truncate text-xs text-gray-500">{kategori}</p>
           </div>
           {statusHeader}
         </div>

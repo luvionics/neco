@@ -16,9 +16,10 @@ import {
   labelDiskon, // BARU (diskon)
   rupiah,
   statusDiskon, // BARU (diskon)
-  useToko,
+  useProdukToko,
   type Produk,
-} from "../components/toko-context";
+} from "../components/toko";
+import { useToko } from "../components/toko-provider";
 import { Saklar } from "../ui";
 import FormProduct, {
   type GrupInput,
@@ -176,15 +177,14 @@ function ChipKategori({
 }
 
 export default function ProdukPage() {
+  const { id, toko } = useToko();
   const {
-    id,
-    toko,
     produk,
     setProduk,
     kategori,
     muatUlangProduk,
     muatUlangKategori,
-  } = useToko();
+  } = useProdukToko(id);
 
   const supabase = useMemo(() => createClient(), []);
   const toast = useToast();
@@ -1021,6 +1021,11 @@ export default function ProdukPage() {
 
       {tambah && (
         <FormProduct
+          idToko={id}
+          kategori={kategori}
+          daftarProduk={produk}
+          muatUlangKategori={muatUlangKategori}
+          muatUlangProduk={muatUlangProduk}
           onTutup={tutupTambah}
           onSimpan={simpanProduk}
           onPilihGambar={(file) => pilihGambar(file, null)}
@@ -1031,6 +1036,11 @@ export default function ProdukPage() {
       {diubah && (
         <FormProduct
           key={diubah.id}
+          idToko={id}
+          kategori={kategori}
+          daftarProduk={produk}
+          muatUlangKategori={muatUlangKategori}
+          muatUlangProduk={muatUlangProduk}
           produk={diubah}
           grupAwal={grupAwal}
           onTutup={tutupUbah}

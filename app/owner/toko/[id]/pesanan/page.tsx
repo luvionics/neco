@@ -5,11 +5,13 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ArrowRight, Settings2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { useToko, type JenisPesanan } from "../components/toko-context";
-import { JENIS_PESANAN, SEMBUNYIKAN_SCROLLBAR } from "../ui";
+import { useToko } from "../components/toko-provider";
+import type { JenisPesanan } from "../components/toko";
+import { JENIS_PESANAN } from "../ui";
 import PesanAntar from "./components/PesanAntar";
 import AmbilSendiri from "./components/AmbilSendiri";
 import PesanDariMeja from "./components/PesanDariMeja";
+import { IkonLencana } from "./components/PanelPesanan";
 
 // orders.order_type <-> jenis layanan di aplikasi
 const DARI_TIPE: Record<string, JenisPesanan> = {
@@ -114,7 +116,7 @@ function IsiPesanan() {
           </div>
           <Link
             href={`${base}/info`}
-            className="group inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-orange-500/25 transition-all hover:shadow-lg hover:shadow-orange-500/30"
+            className="group inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-orange-500/25 transition-all hover:shadow-lg hover:shadow-orange-500/30 sm:w-auto"
           >
             Buka Info toko
             <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
@@ -137,10 +139,10 @@ function IsiPesanan() {
         </h2>
       </header>
 
-      {/* Tab layanan pembeli: hanya layanan yang diaktifkan */}
+      {/* Tab layanan: ikon + badge, teks hanya di tab aktif */}
       <nav
         aria-label="Jenis pesanan"
-        className={`flex gap-1 overflow-x-auto rounded-2xl border border-gray-100 bg-white p-1.5 shadow-sm ${SEMBUNYIKAN_SCROLLBAR}`}
+        className="flex gap-1.5 rounded-2xl border border-gray-100 bg-white p-1.5 shadow-sm"
       >
         {daftarAktif.map(({ id: k, label, ikon: Ikon }) => {
           const sel = k === jenis;
@@ -151,20 +153,18 @@ function IsiPesanan() {
               href={`${base}/pesanan?jenis=${k}`}
               scroll={false}
               aria-current={sel ? "page" : undefined}
-              className={`flex flex-1 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-xl px-3 py-2.5 text-sm transition-all duration-200 ${
+              aria-label={label}
+              title={label}
+              className={`flex h-11 min-w-0 items-center justify-center gap-2 whitespace-nowrap rounded-xl px-2 text-sm transition-all duration-200 ${
                 sel
-                  ? "bg-gradient-to-r from-orange-500 to-amber-500 font-semibold text-white shadow-md shadow-orange-500/25"
-                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                  ? "flex-[3] bg-gradient-to-r from-orange-500 to-amber-500 font-semibold text-white shadow-md shadow-orange-500/25"
+                  : "flex-1 text-gray-500 hover:bg-gray-50 hover:text-gray-900"
               }`}
             >
-              <Ikon className="h-4 w-4 shrink-0" />
-              {label}
-              {jumlah > 0 && (
-                <span
-                  className={`rounded-full px-1.5 text-[10px] font-bold leading-4 ${
-                    sel ? "bg-white text-orange-600" : "bg-orange-500 text-white"
-                  }`}
-                >
+              <IkonLencana Ikon={Ikon} jumlah={jumlah} sel={sel} />
+              {sel && <span className="truncate">{label}</span>}
+              {sel && jumlah > 0 && (
+                <span className="rounded-full bg-white px-1.5 text-[10px] font-bold leading-4 text-orange-600">
                   {jumlah > 99 ? "99+" : jumlah}
                   <span className="sr-only"> pesanan aktif</span>
                 </span>

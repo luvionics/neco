@@ -20,7 +20,8 @@ import {
   Trophy,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { rupiah, useToko } from "./components/toko-context";
+import { useToko } from "./components/toko-provider";
+import { rupiah, useProdukToko } from "./components/toko";
 import { JENIS_PESANAN } from "./ui";
 
 const BATAS_STOK = 5;
@@ -398,7 +399,8 @@ function GrafikDonat({
 // ---------- Halaman ----------
 
 export default function RingkasanPage() {
-  const { id, base, toko, produk } = useToko();
+  const { id, base, toko } = useToko();
+  const { produk } = useProdukToko(id);
   const supabase = useMemo(() => createClient(), []);
 
   const [hasil, setHasil] = useState<HasilRingkasan | null>(null);

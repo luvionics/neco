@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { Bike, ShoppingBag, UtensilsCrossed, type LucideIcon } from "lucide-react";
-import type { JenisPesanan } from "./components/toko-context";
+import type { JenisPesanan } from "./components/toko";
 
 export const SEMBUNYIKAN_SCROLLBAR =
   "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden";

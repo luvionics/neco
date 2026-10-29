@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/toast";
-import { useToko } from "../../components/toko-context";
+import { useToko } from "../../components/toko-provider";
 import { JENIS_PESANAN, Saklar } from "../../ui";
 
 // ---------- Konstanta & tipe ----------

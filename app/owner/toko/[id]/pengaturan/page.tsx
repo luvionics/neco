@@ -12,7 +12,8 @@ import {
   UtensilsCrossed,
   type LucideIcon,
 } from "lucide-react";
-import { urlHalamanToko, useToko } from "../components/toko-context";
+import { useToko } from "../components/toko-provider";
+import { urlHalamanToko } from "../components/toko";
 import InfoToko from "./components/info-toko";
 import GambarToko from "./components/gambar-toko";
 import JamBuka from "./components/jam-buka";

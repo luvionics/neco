@@ -25,7 +25,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/toast";
 import { useModal } from "@/components/modal";
-import { useToko } from "../../components/toko-context";
+import { useToko } from "../../components/toko-provider";
 
 // ---------- Konstanta & tipe ----------
 

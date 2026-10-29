@@ -25,7 +25,6 @@ import { NavBawah } from "@/app/components/Navbar";
 import TeksBerjalan from "@/app/components/TeksBerjalan";
 import { createClient } from "@/lib/supabase/client";
 import FormProfil from "./components/FormProfil";
-import { PesanGalat } from "./components/Bidang";
 import {
   KOLOM_DB,
   PROFIL_KOSONG,
@@ -36,7 +35,7 @@ import {
   type Profil,
 } from "./components/profil";
 
-type PrefNotif = Record<string, boolean>;
+type TokoRingkas = { id: string; nama: string; status: string };
 
 // Pengelompokan status pesanan untuk kartu "Pesanan saya".
 // Sesuai constraint orders.status:
@@ -51,13 +50,15 @@ const RINGKAS_PESANAN = [
 // Sesuai constraint shops.status: pending, active, suspended, closed
 const STATUS_TOKO_AKTIF = ["active"];
 
-// Pengaturan notifikasi, disimpan di metadata akun Supabase (user_metadata.notif)
-const NOTIF = [
-  { id: "pesanan", judul: "Status pesanan", teks: "Pesananmu dikonfirmasi, diantar, atau siap diambil" },
-  { id: "promo", judul: "Promo toko sekitar", teks: "Gratis ongkir dan diskon dari toko terdekat" },
-  { id: "info", judul: "Toko baru di sekitarmu", teks: "Kabar saat ada toko baru yang buka di areamu" },
-];
-const NOTIF_DEFAULT: PrefNotif = { pesanan: true, promo: true, info: false };
+const STATUS_TOKO_INFO: Record<string, { label: string; kelas: string }> = {
+  active: { label: "Aktif", kelas: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100" },
+  pending: { label: "Diproses", kelas: "bg-amber-50 text-amber-700 ring-1 ring-amber-100" },
+  suspended: { label: "Ditangguhkan", kelas: "bg-red-50 text-red-700 ring-1 ring-red-100" },
+  closed: { label: "Ditutup", kelas: "bg-gray-100 text-gray-600 ring-1 ring-gray-200" },
+};
+
+// Jumlah toko yang tampil di akses cepat
+const BATAS_TOKO = 3;
 
 // Teks berjalan di header: keterangan seputar akun
 const TEKS_AKUN = [
@@ -65,42 +66,12 @@ const TEKS_AKUN = [
   "Lengkapi data profil agar toko terdekat lebih mudah ditemukan",
   "Pantau status pesananmu di kartu Pesanan saya",
   "Punya usaha? Daftarkan tokomu gratis lewat menu Daftarkan toko",
-  "Kelola tokomu lewat menu Kelola toko",
-  "Atur jenis notifikasi yang ingin kamu terima lewat saklar",
+  "Masuk ke dashboard tokomu lewat kartu Toko saya",
   "Butuh bantuan? Buka Pusat bantuan kapan saja",
   "Jangan lupa keluar dari akun saat memakai perangkat bersama",
 ];
 
 // ---------- Komponen kecil ----------
-
-function Saklar({
-  nyala,
-  onChange,
-  label,
-}: {
-  nyala: boolean;
-  onChange: () => void;
-  label: string;
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={nyala}
-      aria-label={label}
-      onClick={onChange}
-      className={`relative h-6 w-11 shrink-0 rounded-full transition-colors duration-200 focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-500/20 ${
-        nyala ? "bg-emerald-500" : "bg-gray-300"
-      }`}
-    >
-      <span
-        className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 ${
-          nyala ? "translate-x-5" : ""
-        }`}
-      />
-    </button>
-  );
-}
 
 function BarisMenu({
   ikon: Ikon,
@@ -157,6 +128,29 @@ function BarisMenu({
   );
 }
 
+function BarisToko({ toko }: { toko: TokoRingkas }) {
+  const info = STATUS_TOKO_INFO[toko.status] ?? STATUS_TOKO_INFO.closed;
+  return (
+    <a
+      href={`/owner/toko/${toko.id}`}
+      className="group flex w-full items-center gap-3.5 py-3 pl-8 pr-5 transition-colors hover:bg-gray-50/70 md:pl-9"
+    >
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-500 transition-colors group-hover:bg-orange-500 group-hover:text-white">
+        <Store className="h-4 w-4" />
+      </span>
+      <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900">
+        {toko.nama}
+      </span>
+      <span
+        className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${info.kelas}`}
+      >
+        {info.label}
+      </span>
+      <ChevronRight className="h-4 w-4 shrink-0 text-gray-300 transition-transform group-hover:translate-x-0.5 group-hover:text-orange-500" />
+    </a>
+  );
+}
+
 function Kartu({
   judul,
   aksi,
@@ -203,10 +197,8 @@ export default function AkunPage() {
   const [user, setUser] = useState<User | null>(null);
   const [profil, setProfil] = useState<Profil>(PROFIL_KOSONG);
   const [ringkas, setRingkas] = useState<number[]>(RINGKAS_PESANAN.map(() => 0));
-  const [toko, setToko] = useState({ total: 0, aktif: 0 });
+  const [daftarToko, setDaftarToko] = useState<TokoRingkas[]>([]);
   const [daftarArea, setDaftarArea] = useState<string[]>([]);
-  const [notif, setNotif] = useState<PrefNotif>(NOTIF_DEFAULT);
-  const [galatNotif, setGalatNotif] = useState("");
 
   // null = form tertutup, "ubah" = ubah profil, "lengkapi" = lengkapi data
   const [formBuka, setFormBuka] = useState<null | "ubah" | "lengkapi">(null);
@@ -231,7 +223,11 @@ export default function AkunPage() {
 
       const [resProfil, resToko, resArea, jumlahPesanan] = await Promise.all([
         supabase.from("profiles").select(KOLOM_DB).eq("id", u.id).maybeSingle(),
-        supabase.from("shops").select("status").eq("owner_id", u.id),
+        supabase
+          .from("shops")
+          .select("id, name, status, created_at")
+          .eq("owner_id", u.id)
+          .order("created_at", { ascending: true }),
         supabase.from("shops").select("village").not("village", "is", null).limit(500),
         Promise.all(
           RINGKAS_PESANAN.map(async (k) => {
@@ -256,13 +252,14 @@ export default function AkunPage() {
 
       setUser(u);
       setProfil(dariDb(resProfil.data, namaMeta));
-      setNotif({ ...NOTIF_DEFAULT, ...(meta.notif as PrefNotif | undefined) });
 
-      const tokoSaya = resToko.data ?? [];
-      setToko({
-        total: tokoSaya.length,
-        aktif: tokoSaya.filter((t) => STATUS_TOKO_AKTIF.includes(t.status)).length,
-      });
+      setDaftarToko(
+        (resToko.data ?? []).map((t) => ({
+          id: String(t.id),
+          nama: typeof t.name === "string" ? t.name : "",
+          status: typeof t.status === "string" ? t.status : "",
+        }))
+      );
 
       setRingkas(jumlahPesanan.map((j) => j.jumlah));
 
@@ -290,6 +287,15 @@ export default function AkunPage() {
 
   const inisial = profil.nama.trim().charAt(0).toUpperCase() || "?";
   const kurang = kolomKurang(profil);
+
+  const totalToko = daftarToko.length;
+  const tokoAktif = daftarToko.filter((t) => STATUS_TOKO_AKTIF.includes(t.status)).length;
+  const ketToko =
+    totalToko === 1
+      ? tokoAktif > 0
+        ? "Tokomu aktif"
+        : "Tokomu belum aktif"
+      : `${tokoAktif} dari ${totalToko} toko aktif`;
 
   // Dipanggil FormProfil. Kembalikan pesan galat, atau null bila berhasil.
   const simpanProfil = async (data: Profil): Promise<string | null> => {
@@ -324,19 +330,6 @@ export default function AkunPage() {
     setProfil(data);
     setFormBuka(null);
     return null;
-  };
-
-  const toggleNotif = async (id: string) => {
-    const sebelum = notif;
-    const baru = { ...notif, [id]: !notif[id] };
-    setNotif(baru);
-    setGalatNotif("");
-
-    const { error } = await supabase.auth.updateUser({ data: { notif: baru } });
-    if (error) {
-      setNotif(sebelum);
-      setGalatNotif("Gagal menyimpan pengaturan, coba lagi");
-    }
   };
 
   const keluarAkun = async () => {
@@ -375,14 +368,12 @@ export default function AkunPage() {
             )}
 
             {/* PROFIL */}
-            {/* ← DIPERBAIKI: overflow-hidden dipindah ke banner saja, kartu tidak lagi memotong avatar */}
             <section className="rounded-3xl border border-gray-100 bg-white shadow-sm">
               {/* Banner: overflow-hidden + rounded atas agar lingkaran dekoratif tetap terpotong rapi */}
               <div className="relative h-20 overflow-hidden rounded-t-3xl bg-gradient-to-r from-orange-500 via-orange-500 to-amber-500">
                 <div className="pointer-events-none absolute -right-8 -top-10 h-36 w-36 rounded-full bg-white/10" />
                 <div className="pointer-events-none absolute -bottom-12 left-1/3 h-32 w-32 rounded-full bg-white/10" />
               </div>
-              {/* ← DIPERBAIKI: relative z-10 supaya avatar berada di atas banner */}
               <div className="relative z-10 px-5 pb-5">
                 <div className="-mt-10 flex items-end justify-between gap-3">
                   {profil.avatar ? (
@@ -500,16 +491,35 @@ export default function AkunPage() {
             </Kartu>
 
             {/* TOKO SAYA */}
-            {/* shops punya UNIQUE (owner_id): satu pengguna hanya bisa punya satu toko */}
             <Kartu judul="Toko saya">
               <div className="divide-y divide-gray-100 pt-2">
-                {toko.total > 0 ? (
-                  <BarisMenu
-                    ikon={Store}
-                    judul="Kelola toko"
-                    ket={toko.aktif > 0 ? "Tokomu aktif" : "Tokomu belum aktif"}
-                    href="/owner"
-                  />
+                {totalToko > 0 ? (
+                  <>
+                    <BarisMenu
+                      ikon={Store}
+                      judul="Kelola toko"
+                      ket={ketToko}
+                      href="/owner"
+                    />
+                    {daftarToko.slice(0, BATAS_TOKO).map((t) => (
+                      <BarisToko key={t.id} toko={t} />
+                    ))}
+                    {totalToko > BATAS_TOKO && (
+                      <a
+                        href="/owner"
+                        className="flex items-center justify-center gap-0.5 py-3 text-xs font-medium text-orange-600 transition-colors hover:bg-orange-50/50 hover:text-orange-700"
+                      >
+                        Lihat semua ({totalToko} toko)
+                        <ChevronRight className="h-3.5 w-3.5" />
+                      </a>
+                    )}
+                    <BarisMenu
+                      ikon={Plus}
+                      judul="Toko baru"
+                      ket="Daftarkan toko lain, gratis"
+                      href="/owner/daftar"
+                    />
+                  </>
                 ) : (
                   <BarisMenu
                     ikon={Plus}
@@ -519,33 +529,6 @@ export default function AkunPage() {
                   />
                 )}
               </div>
-            </Kartu>
-
-            {/* PENGATURAN NOTIFIKASI */}
-            <Kartu judul="Pengaturan notifikasi">
-              {galatNotif && (
-                <div className="px-5 pt-2">
-                  <PesanGalat>{galatNotif}</PesanGalat>
-                </div>
-              )}
-              <ul className="divide-y divide-gray-100 pt-2">
-                {NOTIF.map((n) => (
-                  <li
-                    key={n.id}
-                    className="flex items-center gap-3 px-5 py-3.5 transition-colors hover:bg-gray-50/70"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-gray-900">{n.judul}</p>
-                      <p className="text-xs text-gray-500">{n.teks}</p>
-                    </div>
-                    <Saklar
-                      nyala={Boolean(notif[n.id])}
-                      onChange={() => toggleNotif(n.id)}
-                      label={n.judul}
-                    />
-                  </li>
-                ))}
-              </ul>
             </Kartu>
 
             {/* BANTUAN & KELUAR */}
