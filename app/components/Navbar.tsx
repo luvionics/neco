@@ -4,6 +4,7 @@
 import { Bell, Home, LogIn, Receipt, User } from "lucide-react";
 import Lencana from "@/app/components/Lencana";
 import { useSesi } from "@/app/components/useSesi";
+import { usePesananAktif } from "@/app/components/usePesananAktif";
 
 // Satu-satunya sumber menu navigasi, dipakai semua halaman
 export const NAV = [
@@ -21,6 +22,8 @@ export const NOTIF_BARU = 2;
 type Props = {
   aktif: NamaNav;
   notifBaru?: number;
+  /** Menimpa jumlah pesanan aktif dari database (opsional). */
+  pesananBaru?: number;
 };
 
 // Tombol masuk, tampil di header saat user belum login
@@ -37,7 +40,10 @@ export function TombolMasuk() {
 }
 
 // Navigasi utama (desktop), ditampilkan di dalam header
-export function NavDesktop({ aktif, notifBaru = NOTIF_BARU }: Props) {
+export function NavDesktop({ aktif, notifBaru = NOTIF_BARU, pesananBaru }: Props) {
+  const pesananDb = usePesananAktif();
+  const jumlahPesanan = pesananBaru ?? pesananDb;
+
   return (
     <nav
       aria-label="Navigasi utama"
@@ -45,20 +51,27 @@ export function NavDesktop({ aktif, notifBaru = NOTIF_BARU }: Props) {
     >
       {NAV.map(({ nama, ikon: Ikon, href }) => {
         const menyala = nama === aktif;
+        const jumlah =
+          nama === "Notifikasi" ? notifBaru : nama === "Pesanan" ? jumlahPesanan : 0;
         return (
           <a
             key={nama}
             href={href}
             aria-current={menyala ? "page" : undefined}
+            aria-label={
+              nama === "Pesanan" && jumlah > 0
+                ? `${nama}, ${jumlah} pesanan aktif`
+                : undefined
+            }
             className={`flex flex-col items-center gap-0.5 rounded-xl px-3 py-1.5 text-[11px] font-medium text-white transition-all ${
               menyala ? "bg-white/20 ring-1 ring-white/25" : "hover:bg-white/10"
             }`}
           >
             <span className="relative">
               <Ikon className="h-5 w-5" />
-              {nama === "Notifikasi" && (
+              {jumlah > 0 && (
                 <Lencana
-                  jumlah={notifBaru}
+                  jumlah={jumlah}
                   kelas="bg-yellow-300 text-red-700"
                 />
               )}
@@ -72,8 +85,11 @@ export function NavDesktop({ aktif, notifBaru = NOTIF_BARU }: Props) {
 }
 
 // Bottom nav (mobile, melayang), hanya tampil saat sudah login
-export function NavBawah({ aktif, notifBaru = NOTIF_BARU }: Props) {
+export function NavBawah({ aktif, notifBaru = NOTIF_BARU, pesananBaru }: Props) {
   const status = useSesi();
+  const pesananDb = usePesananAktif();
+  const jumlahPesanan = pesananBaru ?? pesananDb;
+
   if (status !== "masuk") return null;
 
   return (
@@ -84,11 +100,18 @@ export function NavBawah({ aktif, notifBaru = NOTIF_BARU }: Props) {
       <ul className="grid grid-cols-4 p-1.5">
         {NAV.map(({ nama, ikon: Ikon, href }) => {
           const menyala = nama === aktif;
+          const jumlah =
+            nama === "Notifikasi" ? notifBaru : nama === "Pesanan" ? jumlahPesanan : 0;
           return (
             <li key={nama}>
               <a
                 href={href}
                 aria-current={menyala ? "page" : undefined}
+                aria-label={
+                  nama === "Pesanan" && jumlah > 0
+                    ? `${nama}, ${jumlah} pesanan aktif`
+                    : undefined
+                }
                 className={`flex flex-col items-center gap-1 py-1.5 text-[10px] font-medium transition-colors ${
                   menyala ? "text-orange-600" : "text-gray-400"
                 }`}
@@ -100,9 +123,9 @@ export function NavBawah({ aktif, notifBaru = NOTIF_BARU }: Props) {
                 >
                   <span className="relative">
                     <Ikon className={`h-5 w-5 ${menyala ? "stroke-[2.5]" : ""}`} />
-                    {nama === "Notifikasi" && (
+                    {jumlah > 0 && (
                       <Lencana
-                        jumlah={notifBaru}
+                        jumlah={jumlah}
                         kelas="bg-red-500 text-white ring-2 ring-white"
                       />
                     )}

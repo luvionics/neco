@@ -14,10 +14,12 @@ import {
   Settings,
 } from "lucide-react";
 import { STATUS_TOKO, urlHalamanToko, useToko } from "./toko-context";
-import { Saklar } from "../ui";
+import { usePesananAktifToko } from "./usePesananAktifToko";
 
 export default function Navbar() {
-  const { id, base, toko, totalBaru, ubahBukaSekarang } = useToko();
+  const { id, base, toko } = useToko();
+  // Jumlah pesanan aktif (pending sampai on_delivery) langsung dari Supabase
+  const pesananAktif = usePesananAktifToko(id);
   const pathname = usePathname().replace(/\/$/, "");
 
   const aktif = toko.status === "aktif";
@@ -34,7 +36,7 @@ export default function Navbar() {
       ? [{ href: `${base}/kasir`, label: "Kasir", ikon: Calculator, cocok: pathname.startsWith(`${base}/kasir`), jumlah: 0 }]
       : []),
     ...(adaPesanan
-      ? [{ href: `${base}/pesanan`, label: "Pesanan", ikon: Receipt, cocok: pathname.startsWith(`${base}/pesanan`), jumlah: totalBaru }]
+      ? [{ href: `${base}/pesanan`, label: "Pesanan", ikon: Receipt, cocok: pathname.startsWith(`${base}/pesanan`), jumlah: pesananAktif }]
       : []),
     { href: `${base}/produk`, label: "Produk", ikon: Package, cocok: pathname.startsWith(`${base}/produk`), jumlah: 0 },
     { href: `${base}/pengaturan`, label: "Pengaturan toko", ikon: Settings, cocok: pathname.startsWith(`${base}/pengaturan`), jumlah: 0 },
@@ -50,47 +52,33 @@ export default function Navbar() {
     />
   );
 
-  // Kontrol buka/tutup untuk sidebar (desktop)
+  // Penanda status toko untuk sidebar (desktop), hanya tampilan
   const statusSidebar = (
-    <div className="flex items-center justify-between gap-3 rounded-2xl bg-gray-50 px-3.5 py-3 ring-1 ring-gray-100">
-      <div className="min-w-0">
-        <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">
-          Status toko
+    <div className="rounded-2xl bg-gray-50 px-3.5 py-3 ring-1 ring-gray-100">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">
+        Status toko
+      </p>
+      {aktif ? (
+        <p className="mt-0.5 flex items-center gap-2 text-sm font-semibold text-gray-900">
+          {titik}
+          {toko.bukaSekarang ? "Buka" : "Tutup"}
         </p>
-        {aktif ? (
-          <p className="mt-0.5 flex items-center gap-2 text-sm font-semibold text-gray-900">
-            {titik}
-            {toko.bukaSekarang ? "Buka" : "Tutup"}
-          </p>
-        ) : (
-          <span
-            className={`mt-1 inline-block rounded-full px-2.5 py-0.5 text-[11px] font-medium ${infoStatus.kelas}`}
-          >
-            {infoStatus.label}
-          </span>
-        )}
-      </div>
-      {aktif && (
-        <Saklar
-          nyala={toko.bukaSekarang}
-          onChange={ubahBukaSekarang}
-          label={`Status buka ${toko.nama}`}
-        />
+      ) : (
+        <span
+          className={`mt-1 inline-block rounded-full px-2.5 py-0.5 text-[11px] font-medium ${infoStatus.kelas}`}
+        >
+          {infoStatus.label}
+        </span>
       )}
     </div>
   );
 
-  // Kontrol buka/tutup untuk header (mobile)
+  // Penanda status toko untuk header (mobile), hanya tampilan
   const statusHeader = aktif ? (
-    <label className="flex shrink-0 items-center gap-2 rounded-full bg-gray-100 py-1 pl-3 pr-1.5 text-xs font-semibold text-gray-700">
+    <span className="flex shrink-0 items-center gap-2 rounded-full bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-700">
       {titik}
-      <span>{toko.bukaSekarang ? "Buka" : "Tutup"}</span>
-      <Saklar
-        nyala={toko.bukaSekarang}
-        onChange={ubahBukaSekarang}
-        label={`Status buka ${toko.nama}`}
-      />
-    </label>
+      {toko.bukaSekarang ? "Buka" : "Tutup"}
+    </span>
   ) : (
     <span
       className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium ${infoStatus.kelas}`}
@@ -168,7 +156,8 @@ export default function Navbar() {
                           : "bg-orange-500 text-white"
                       }`}
                     >
-                      {jumlah}
+                      {jumlah > 99 ? "99+" : jumlah}
+                      <span className="sr-only"> pesanan aktif</span>
                     </span>
                   )}
                 </Link>
@@ -248,7 +237,7 @@ export default function Navbar() {
                   {jumlah > 0 && (
                     <span className="absolute right-1.5 top-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-white">
                       {jumlah > 9 ? "9+" : jumlah}
-                      <span className="sr-only"> pesanan baru</span>
+                      <span className="sr-only"> pesanan aktif</span>
                     </span>
                   )}
                 </span>

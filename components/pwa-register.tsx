@@ -1,18 +1,27 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { Download, WifiOff, X } from "lucide-react";
+// Sesuaikan path import ini dengan lokasi client.ts milikmu
+import { createClient } from "@/lib/supabase/client";
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 };
 
+const MIN_ACCOUNT_AGE_MS = 24 * 60 * 60 * 1000; // akun minimal 1 hari
+const SNOOZE_MS = 3 * 24 * 60 * 60 * 1000; // ditunda 3 hari
+
 export default function PwaRegister() {
+  const supabase = useMemo(() => createClient(), []);
+  const userIdRef = useRef<string | null>(null);
+
   const [installEvent, setInstallEvent] =
     useState<BeforeInstallPromptEvent | null>(null);
-  const [dismissed, setDismissed] = useState(false);
+  const [eligible, setEligible] = useState(false);
+  const [closed, setClosed] = useState(false);
   const [offline, setOffline] = useState(false);
 
   // Registrasi service worker (hanya production agar dev tidak ikut ter-cache).
@@ -58,7 +67,7 @@ export default function PwaRegister() {
       );
   }, []);
 
-  // Tombol pasang aplikasi.
+  // Tangkap event install dari browser.
   useEffect(() => {
     const onPrompt = (e: Event) => {
       e.preventDefault();
@@ -73,6 +82,49 @@ export default function PwaRegister() {
     };
   }, []);
 
+  // Cek syarat tampil: sudah login, akun >= 1 hari, penundaan sudah lewat.
+  useEffect(() => {
+    // Sudah dibuka sebagai aplikasi terpasang -> tidak perlu modal.
+    if (window.matchMedia("(display-mode: standalone)").matches) return;
+
+    async function checkEligibility(userId: string) {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("created_at, install_prompt_snooze_until")
+        .eq("id", userId)
+        .single();
+
+      if (error || !data) {
+        setEligible(false);
+        return;
+      }
+
+      const oldEnough =
+        Date.now() - new Date(data.created_at).getTime() >= MIN_ACCOUNT_AGE_MS;
+      const snoozeOver =
+        !data.install_prompt_snooze_until ||
+        new Date(data.install_prompt_snooze_until).getTime() <= Date.now();
+
+      setEligible(oldEnough && snoozeOver);
+    }
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      const userId = session?.user?.id ?? null;
+      userIdRef.current = userId;
+
+      if (!userId) {
+        setEligible(false);
+        return;
+      }
+      // Jangan await query Supabase langsung di dalam callback ini.
+      setTimeout(() => checkEligibility(userId), 0);
+    });
+
+    return () => subscription.unsubscribe();
+  }, [supabase]);
+
   // Indikator offline.
   useEffect(() => {
     const update = () => setOffline(!navigator.onLine);
@@ -85,12 +137,49 @@ export default function PwaRegister() {
     };
   }, []);
 
+  const showModal = !!installEvent && eligible && !closed;
+
+  // Tutup modal dan simpan penundaan 3 hari ke Supabase.
+  async function snooze() {
+    setClosed(true);
+    const userId = userIdRef.current;
+    if (!userId) return;
+
+    const until = new Date(Date.now() + SNOOZE_MS).toISOString();
+    const { data, error } = await supabase
+      .from("profiles")
+      .update({ install_prompt_snooze_until: until })
+      .eq("id", userId)
+      .select("id");
+
+    if (error) {
+      console.error("Gagal menyimpan penundaan modal install:", error);
+    } else if (!data || data.length === 0) {
+      console.warn(
+        "Penundaan tidak tersimpan (0 baris ter-update). Cek policy UPDATE di tabel profiles."
+      );
+    }
+  }
+
   async function handleInstall() {
     if (!installEvent) return;
     await installEvent.prompt();
-    await installEvent.userChoice;
+    const choice = await installEvent.userChoice;
     setInstallEvent(null);
+    // Kalau pengguna menolak di dialog bawaan browser, tunda juga.
+    if (choice.outcome === "dismissed") await snooze();
   }
+
+  // Tutup dengan tombol Escape.
+  useEffect(() => {
+    if (!showModal) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") snooze();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showModal]);
 
   return (
     <>
@@ -104,37 +193,57 @@ export default function PwaRegister() {
         </div>
       )}
 
-      {installEvent && !dismissed && (
-        <div className="fixed inset-x-4 bottom-4 z-[100] mx-auto flex max-w-md items-center gap-3 rounded-2xl border border-orange-200 bg-white p-3 shadow-lg">
-          <Image
-            src="/icons/icon-192.png"
-            alt=""
-            width={40}
-            height={40}
-            className="h-10 w-10 rounded-xl"
-          />
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-gray-900">
+      {showModal && (
+        <div
+          className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 p-4"
+          onClick={snooze}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="install-title"
+            onClick={(e) => e.stopPropagation()}
+            className="relative w-full max-w-sm rounded-3xl bg-white p-6 text-center shadow-2xl"
+          >
+            <button
+              onClick={snooze}
+              aria-label="Tutup"
+              className="absolute right-3 top-3 rounded-lg p-1 text-gray-400 hover:text-gray-600"
+            >
+              <X size={18} />
+            </button>
+
+            <Image
+              src="/icons/icon-192.png"
+              alt=""
+              width={64}
+              height={64}
+              className="mx-auto h-16 w-16 rounded-2xl"
+            />
+            <h2
+              id="install-title"
+              className="mt-4 text-lg font-bold text-gray-900"
+            >
               Pasang NECOKU
+            </h2>
+            <p className="mt-1 text-sm text-gray-500">
+              Akses lebih cepat langsung dari layar utama.
             </p>
-            <p className="text-xs text-gray-500">
-              Akses lebih cepat dan bisa dipakai offline.
-            </p>
+
+            <button
+              onClick={handleInstall}
+              className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white hover:bg-orange-600"
+            >
+              <Download size={16} />
+              Pasang Sekarang
+            </button>
+            <button
+              onClick={snooze}
+              className="mt-2 w-full rounded-xl px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700"
+            >
+              Nanti saja
+            </button>
           </div>
-          <button
-            onClick={handleInstall}
-            className="flex items-center gap-1 rounded-xl bg-orange-500 px-3 py-2 text-sm font-semibold text-white hover:bg-orange-600"
-          >
-            <Download size={14} />
-            Pasang
-          </button>
-          <button
-            onClick={() => setDismissed(true)}
-            aria-label="Tutup"
-            className="rounded-lg p-1 text-gray-400 hover:text-gray-600"
-          >
-            <X size={16} />
-          </button>
         </div>
       )}
     </>

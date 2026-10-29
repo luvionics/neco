@@ -282,7 +282,6 @@ export default function DaftarToko() {
   const [memuat, setMemuat] = useState(true);
   const [user, setUser] = useState<User | null>(null);
   const [namaCadangan, setNamaCadangan] = useState("");
-  const [tokoAda, setTokoAda] = useState<{ nama: string; status: string } | null>(null);
   const [daftarArea, setDaftarArea] = useState<string[]>([]);
   const [dariProfil, setDariProfil] = useState(false);
 
@@ -293,7 +292,7 @@ export default function DaftarToko() {
   const [kirim, setKirim] = useState(false);
   const [selesai, setSelesai] = useState(false);
 
-  // Cek login, cek apakah sudah punya toko, dan isi awal dari profil
+  // Cek login dan isi awal dari profil
   useEffect(() => {
     let batal = false;
 
@@ -307,8 +306,7 @@ export default function DaftarToko() {
         return;
       }
 
-      const [resToko, resProfil, resArea] = await Promise.all([
-        supabase.from("shops").select("name, status").eq("owner_id", u.id).maybeSingle(),
+      const [resProfil, resArea] = await Promise.all([
         supabase
           .from("profiles")
           .select(
@@ -329,10 +327,6 @@ export default function DaftarToko() {
           ""
       );
       setUser(u);
-
-      if (resToko.data) {
-        setTokoAda({ nama: resToko.data.name, status: resToko.data.status });
-      }
 
       const p = resProfil.data;
       if (p) {
@@ -451,8 +445,8 @@ export default function DaftarToko() {
       const info = `${error.message} ${error.details ?? ""}`.toLowerCase();
 
       if (error.code === "23505") {
-        if (info.includes("owner_id")) return "Kamu sudah punya toko";
         if (info.includes("slug")) continue; // coba lagi dengan slug lain
+        return "Data toko bentrok dengan toko lain, coba ubah nama toko";
       }
       if (error.code === "23503") return "Profilmu belum siap, buka halaman Akun dan simpan profil dulu";
       if (error.code === "23514") return "Ada isian yang tidak sesuai format, periksa kembali";
@@ -509,8 +503,8 @@ export default function DaftarToko() {
       <header className="sticky top-0 z-30 border-b border-gray-100 bg-white/80 backdrop-blur-xl">
         <div className="mx-auto flex max-w-2xl items-center gap-3 px-3 py-2.5 md:px-4">
           <a
-            href="/akun"
-            aria-label="Kembali ke akun"
+            href="/owner"
+            aria-label="Kembali ke daftar toko"
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-700 transition-colors hover:bg-gray-200"
           >
             <ArrowLeft className="h-5 w-5" />
@@ -525,9 +519,7 @@ export default function DaftarToko() {
             />
           </span>
           <div>
-            <h1 className="text-base font-bold leading-tight text-gray-900">
-              Daftarkan tokomu
-            </h1>
+            <h1 className="text-base font-bold leading-tight text-gray-900">Toko baru</h1>
             <p className="text-xs text-gray-500">
               Gratis, langsung aktif setelah 3 langkah
             </p>
@@ -592,38 +584,9 @@ export default function DaftarToko() {
                 href="/owner"
                 className={`inline-block rounded-xl px-5 py-2.5 text-sm font-semibold ${TOMBOL_UTAMA}`}
               >
-                Kelola toko
+                Lihat toko saya
               </a>
             </div>
-          </section>
-        ) : tokoAda ? (
-          /* ---------- SUDAH PUNYA TOKO ---------- */
-          <section className="space-y-4 rounded-3xl border border-gray-100 bg-white p-6 text-center shadow-sm md:p-8">
-            <span className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-orange-50 text-orange-500 ring-1 ring-orange-100">
-              <Store className="h-8 w-8" />
-            </span>
-            <div className="space-y-1.5">
-              <h2 className="text-xl font-extrabold tracking-tight text-gray-900">
-                Kamu sudah punya toko
-              </h2>
-              <p className="mx-auto max-w-sm text-sm text-gray-500">
-                <b className="text-gray-700">{tokoAda.nama}</b>{" "}
-                {tokoAda.status === "active"
-                  ? "sudah aktif."
-                  : tokoAda.status === "suspended"
-                  ? "sedang ditangguhkan."
-                  : tokoAda.status === "closed"
-                  ? "sedang ditutup."
-                  : "terdaftar di akunmu."}{" "}
-                Satu akun hanya bisa memiliki satu toko.
-              </p>
-            </div>
-            <a
-              href="/owner"
-              className={`inline-block rounded-xl px-5 py-2.5 text-sm font-semibold ${TOMBOL_UTAMA}`}
-            >
-              Kelola toko
-            </a>
           </section>
         ) : (
           /* ---------- FORM ---------- */
