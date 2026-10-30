@@ -3,6 +3,7 @@
 import { useState, type ComponentType } from "react";
 import Link from "next/link";
 import {
+  ClipboardList,
   Clock,
   ExternalLink,
   ImageIcon,
@@ -18,6 +19,7 @@ import InfoToko from "./components/info-toko";
 import GambarToko from "./components/gambar-toko";
 import JamBuka from "./components/jam-buka";
 import Layanan from "./components/layanan";
+import Pesanan from "./components/pesanan";
 import Karyawan from "./components/karyawan";
 import Rekening from "./components/rekening";
 
@@ -28,6 +30,7 @@ const KATALOG: { id: string; label: string; ikon: LucideIcon; Konten: ComponentT
   { id: "gambar", label: "Gambar", ikon: ImageIcon, Konten: GambarToko },
   { id: "jam", label: "Jam buka", ikon: Clock, Konten: JamBuka },
   { id: "layanan", label: "Layanan", ikon: UtensilsCrossed, Konten: Layanan },
+  { id: "pesanan", label: "Pesanan", ikon: ClipboardList, Konten: Pesanan },
   { id: "karyawan", label: "Karyawan", ikon: Users, Konten: Karyawan },
   { id: "rekening", label: "Rekening", ikon: Landmark, Konten: Rekening },
 ];

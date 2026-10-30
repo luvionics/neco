@@ -5,14 +5,12 @@ import { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   ArrowRight,
-  Banknote,
   Check,
-  CreditCard,
+  ChevronDown,
   Loader2,
   Minus,
   Package,
   Plus,
-  QrCode,
   Search,
   Settings2,
   ShoppingCart,
@@ -27,8 +25,6 @@ import { Dialog } from "../ui";
 
 // ---------- Tipe & konstanta ----------
 
-type Metode = "cash" | "qris" | "transfer";
-
 /** Produk beserta data diskonnya. */
 type ProdukKasir = Produk & {
   diskonTipe?: string | null;
@@ -40,19 +36,18 @@ type ProdukKasir = Produk & {
 /** harga = harga satuan setelah diskon, potong = potongan per satuan. */
 type Baris = { produk: ProdukKasir; qty: number; harga: number; potong: number };
 
+/** Pembayaran saat ini hanya tunai. */
 type DataBayar = {
-  metode: Metode;
   diterima: number;
   nama: string;
   catatan: string;
-  referensi: string;
 };
+
 type Struk = {
   kode: string;
   baris: Baris[];
   total: number;
   hemat: number;
-  metode: Metode;
   diterima: number;
   kembalian: number;
 };
@@ -63,12 +58,6 @@ type HasilTransaksi = {
   order_number: string;
   total: number;
   change: number;
-};
-
-const METODE: Record<Metode, { label: string; ikon: typeof Banknote }> = {
-  cash: { label: "Tunai", ikon: Banknote },
-  qris: { label: "QRIS", ikon: QrCode },
-  transfer: { label: "Transfer", ikon: CreditCard },
 };
 
 const BATAS_STOK = 5;
@@ -253,7 +242,7 @@ function PanelKeranjang({
   );
 }
 
-// ---------- Dialog pembayaran ----------
+// ---------- Dialog pembayaran (tunai) ----------
 
 function DialogBayar({
   total,
@@ -268,18 +257,16 @@ function DialogBayar({
   onTutup: () => void;
   onBayar: (data: DataBayar) => Promise<void>;
 }) {
-  const [metode, setMetode] = useState<Metode>("cash");
   const [diterima, setDiterima] = useState("");
-  const [referensi, setReferensi] = useState("");
   const [nama, setNama] = useState("");
   const [catatan, setCatatan] = useState("");
+  const [lanjutan, setLanjutan] = useState(false);
   const [proses, setProses] = useState(false);
   const [galat, setGalat] = useState("");
 
   const uang = Number(diterima);
-  const kurang =
-    metode === "cash" && (!diterima || !Number.isFinite(uang) || uang < total);
-  const kembalian = metode === "cash" && !kurang ? uang - total : 0;
+  const kurang = !diterima || !Number.isFinite(uang) || uang < total;
+  const kembalian = kurang ? 0 : uang - total;
 
   // Saran nominal uang: uang pas + pembulatan ke atas
   const saran = useMemo(() => {
@@ -301,11 +288,9 @@ function DialogBayar({
     setGalat("");
     try {
       await onBayar({
-        metode,
-        diterima: metode === "cash" ? uang : total,
+        diterima: uang,
         nama: nama.trim(),
         catatan: catatan.trim(),
-        referensi: metode === "cash" ? "" : referensi.trim(),
       });
     } catch (e) {
       setGalat(e instanceof Error ? e.message : "Gagal memproses transaksi.");
@@ -339,145 +324,101 @@ function DialogBayar({
         )}
       </div>
 
-      {/* Metode */}
-      <div className="space-y-1.5">
-        <span className="block text-sm font-medium text-gray-700">
-          Metode pembayaran
-        </span>
-        <div role="radiogroup" className="grid grid-cols-3 gap-2">
-          {(Object.keys(METODE) as Metode[]).map((m) => {
-            const Ikon = METODE[m].ikon;
-            const aktif = metode === m;
-            return (
-              <button
-                key={m}
-                type="button"
-                role="radio"
-                aria-checked={aktif}
-                onClick={() => {
-                  setMetode(m);
-                  setGalat("");
-                }}
-                className={`flex flex-col items-center gap-1 rounded-xl border px-2 py-3 text-xs font-semibold transition ${
-                  aktif
-                    ? "border-orange-400 bg-orange-50 text-orange-600 ring-2 ring-orange-500/15"
-                    : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
-                }`}
-              >
-                <Ikon className="h-5 w-5" />
-                {METODE[m].label}
-              </button>
-            );
-          })}
+      {/* Uang diterima */}
+      <div className="space-y-2">
+        <label
+          htmlFor="k-diterima"
+          className="block text-sm font-medium text-gray-700"
+        >
+          Uang diterima (Rp)
+        </label>
+        <input
+          id="k-diterima"
+          type="number"
+          inputMode="numeric"
+          min={0}
+          value={diterima}
+          onChange={(e) => {
+            setDiterima(e.target.value);
+            setGalat("");
+          }}
+          placeholder={String(total)}
+          className={INPUT}
+        />
+        <div className="flex flex-wrap gap-2">
+          {saran.map((n) => (
+            <button
+              key={n}
+              type="button"
+              onClick={() => {
+                setDiterima(String(n));
+                setGalat("");
+              }}
+              className="rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:border-orange-300 hover:bg-orange-50"
+            >
+              {n === total ? "Uang pas" : rupiah(n)}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center justify-between rounded-xl bg-gray-50 px-3.5 py-2.5 text-sm">
+          <span className="text-gray-500">Kembalian</span>
+          <span className="font-bold text-gray-900">
+            {kurang ? "-" : rupiah(kembalian)}
+          </span>
         </div>
       </div>
 
-      {/* Uang diterima (tunai) */}
-      {metode === "cash" && (
-        <div className="space-y-2">
-          <label
-            htmlFor="k-diterima"
-            className="block text-sm font-medium text-gray-700"
-          >
-            Uang diterima (Rp)
-          </label>
-          <input
-            id="k-diterima"
-            type="number"
-            inputMode="numeric"
-            min={0}
-            value={diterima}
-            onChange={(e) => {
-              setDiterima(e.target.value);
-              setGalat("");
-            }}
-            placeholder={String(total)}
-            className={INPUT}
+      {/* Lanjutan: nama pembeli & catatan (disembunyikan sampai dibuka) */}
+      <div>
+        <button
+          type="button"
+          onClick={() => setLanjutan((v) => !v)}
+          aria-expanded={lanjutan}
+          aria-controls="k-lanjutan"
+          className="inline-flex items-center gap-1 rounded-md py-1 text-sm font-medium text-orange-600 hover:text-orange-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500"
+        >
+          Lanjutan
+          <ChevronDown
+            className={`h-4 w-4 transition-transform ${
+              lanjutan ? "rotate-180" : ""
+            }`}
           />
-          <div className="flex flex-wrap gap-2">
-            {saran.map((n) => (
-              <button
-                key={n}
-                type="button"
-                onClick={() => {
-                  setDiterima(String(n));
-                  setGalat("");
-                }}
-                className="rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:border-orange-300 hover:bg-orange-50"
+        </button>
+
+        {lanjutan && (
+          <div id="k-lanjutan" className="mt-2 grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <label
+                htmlFor="k-nama"
+                className="block text-sm font-medium text-gray-700"
               >
-                {n === total ? "Uang pas" : rupiah(n)}
-              </button>
-            ))}
+                Nama pembeli
+              </label>
+              <input
+                id="k-nama"
+                value={nama}
+                onChange={(e) => setNama(e.target.value)}
+                placeholder="Contoh: Budi"
+                className={INPUT}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label
+                htmlFor="k-catatan"
+                className="block text-sm font-medium text-gray-700"
+              >
+                Catatan
+              </label>
+              <input
+                id="k-catatan"
+                value={catatan}
+                onChange={(e) => setCatatan(e.target.value)}
+                placeholder="Contoh: tidak pedas"
+                className={INPUT}
+              />
+            </div>
           </div>
-          <div className="flex items-center justify-between rounded-xl bg-gray-50 px-3.5 py-2.5 text-sm">
-            <span className="text-gray-500">Kembalian</span>
-            <span className="font-bold text-gray-900">
-              {kurang ? "-" : rupiah(kembalian)}
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* Referensi (non-tunai) */}
-      {metode !== "cash" && (
-        <div className="space-y-2">
-          <p className="rounded-xl bg-gray-50 px-3.5 py-2.5 text-xs text-gray-500">
-            Pastikan pembayaran {METODE[metode].label} sudah masuk sebelum
-            menekan tombol konfirmasi.
-          </p>
-          <div className="space-y-1.5">
-            <label
-              htmlFor="k-referensi"
-              className="block text-sm font-medium text-gray-700"
-            >
-              No. referensi{" "}
-              <span className="font-normal text-gray-400">(opsional)</span>
-            </label>
-            <input
-              id="k-referensi"
-              value={referensi}
-              onChange={(e) => setReferensi(e.target.value)}
-              placeholder="Contoh: kode transaksi dari bukti bayar"
-              className={INPUT}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Opsional */}
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="space-y-1.5">
-          <label
-            htmlFor="k-nama"
-            className="block text-sm font-medium text-gray-700"
-          >
-            Nama pembeli{" "}
-            <span className="font-normal text-gray-400">(opsional)</span>
-          </label>
-          <input
-            id="k-nama"
-            value={nama}
-            onChange={(e) => setNama(e.target.value)}
-            placeholder="Contoh: Budi"
-            className={INPUT}
-          />
-        </div>
-        <div className="space-y-1.5">
-          <label
-            htmlFor="k-catatan"
-            className="block text-sm font-medium text-gray-700"
-          >
-            Catatan{" "}
-            <span className="font-normal text-gray-400">(opsional)</span>
-          </label>
-          <input
-            id="k-catatan"
-            value={catatan}
-            onChange={(e) => setCatatan(e.target.value)}
-            placeholder="Contoh: tidak pedas"
-            className={INPUT}
-          />
-        </div>
+        )}
       </div>
 
       {galat && (
@@ -565,27 +506,17 @@ function DialogStruk({
           <dd className="font-bold text-gray-900">{rupiah(struk.total)}</dd>
         </div>
         <div className="flex justify-between">
-          <dt className="text-gray-500">Metode</dt>
+          <dt className="text-gray-500">Uang diterima</dt>
           <dd className="font-medium text-gray-900">
-            {METODE[struk.metode].label}
+            {rupiah(struk.diterima)}
           </dd>
         </div>
-        {struk.metode === "cash" && (
-          <>
-            <div className="flex justify-between">
-              <dt className="text-gray-500">Uang diterima</dt>
-              <dd className="font-medium text-gray-900">
-                {rupiah(struk.diterima)}
-              </dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-gray-500">Kembalian</dt>
-              <dd className="font-bold text-emerald-600">
-                {rupiah(struk.kembalian)}
-              </dd>
-            </div>
-          </>
-        )}
+        <div className="flex justify-between">
+          <dt className="text-gray-500">Kembalian</dt>
+          <dd className="font-bold text-emerald-600">
+            {rupiah(struk.kembalian)}
+          </dd>
+        </div>
       </dl>
 
       <button onClick={onTutup} className={`${TOMBOL_UTAMA} w-full`}>
@@ -693,11 +624,11 @@ function KasirAktif() {
     const { data, error } = await supabase.rpc("buat_transaksi_kasir", {
       p_shop_id: id,
       p_items: baris.map((b) => ({ product_id: b.produk.id, qty: b.qty })),
-      p_method: d.metode,
+      p_method: "cash",
       p_amount_paid: d.diterima,
       p_customer_name: d.nama || null,
       p_notes: d.catatan || null,
-      p_reference: d.referensi || null,
+      p_reference: null,
     });
     if (error) throw new Error(error.message);
 
@@ -708,7 +639,6 @@ function KasirAktif() {
       baris,
       total: Number(hasil.total),
       hemat,
-      metode: d.metode,
       diterima: d.diterima,
       kembalian: Number(hasil.change),
     });
